@@ -1,0 +1,62 @@
+name: publish-openapi
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'global.json'
+      - '.github/workflows/publish-openapi.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-openapi
+  cancel-in-progress: false
+
+jobs:
+  publish-openapi:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Generate OpenAPI document
+        run: dotnet build src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj --configuration Release -p:OpenApiGenerateDocuments=true
+      - name: Test scanner and API contract
+        run: dotnet test --project test/Soenneker.Cloudflare.Clamav.Tests/Soenneker.Cloudflare.Clamav.Tests.csproj --configuration Release
+      - name: Save generated document
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: artifacts/openapi/openapi.json
+          if-no-files-found: error
+      - name: Checkout OpenAPI repository
+        uses: actions/checkout@v7
+        with:
+          repository: soenneker/soenneker.cloudflare.clamav.openapi
+          ref: main
+          path: .openapi-repository
+          token: ${{ secrets.GH__TOKEN }}
+      - name: Publish changed document
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          cp artifacts/openapi/openapi.json .openapi-repository/openapi.json
+          cd .openapi-repository
+          git config user.name soenneker
+          git config user.email 4441470+soenneker@users.noreply.github.com
+          git add openapi.json
+          if git diff --cached --quiet; then
+            echo "OpenAPI document is unchanged."
+            exit 0
+          fi
+          git commit -m "Update OpenAPI from soenneker.cloudflare.clamav@$SOURCE_SHA"
+          git push origin HEAD:main

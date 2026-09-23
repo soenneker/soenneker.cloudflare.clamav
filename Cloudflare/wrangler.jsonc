@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "soenneker-cloudflare-clamav",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-02",
+  "preview_urls": false,
+  "workers_dev": true,
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+    "SCANNER_R2_BUCKET": "clamav-scans",
+    "SCANNER_ENVIRONMENT": "Production"
+  },
+  "containers": [{
+    "name": "soenneker-cloudflare-clamav",
+    "class_name": "ScannerContainer",
+    "image": "../Dockerfile",
+    "instance_type": "standard-1",
+    "max_instances": 1
+  }],
+  "secrets_store_secrets": [
+    {
+      "binding": "SCANNER__APIKEY",
+      "store_id": "YOUR_SECRETS_STORE_ID",
+      "secret_name": "SCANNER__APIKEY"
+    },
+    {
+      "binding": "CLOUDFLARE__APIKEY",
+      "store_id": "YOUR_SECRETS_STORE_ID",
+      "secret_name": "CLOUDFLARE__APIKEY"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SCANNER", "class_name": "ScannerContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScannerContainer"] }],
+  "observability": { "enabled": true }
+}

@@ -56,20 +56,4 @@ The default configuration exposes a workers.dev endpoint, keeps one container in
 
 ## Image releases
 
-The OpenAPI contract is generated from the controller routes, response types, and XML documentation. Generate it locally without starting a webserver or configuring Cloudflare credentials:
-
-```sh
-dotnet build src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj --configuration Release -p:OpenApiGenerateDocuments=true
-```
-
-The output is `artifacts/openapi/openapi.json` (OpenAPI 3.1). The `publish-openapi` workflow runs on relevant pushes to `main` or a manual run on `main`, validates the contract, and commits changes to [soenneker/soenneker.cloudflare.clamav.openapi](https://github.com/soenneker/soenneker.cloudflare.clamav.openapi). It uses the existing `GH__TOKEN` secret, which needs contents write access to that repository. Unchanged documents do not create commits. The current document is available as [raw JSON](https://raw.githubusercontent.com/soenneker/soenneker.cloudflare.clamav.openapi/main/openapi.json).
-
-### Docker Hub
-
-The `publish-image` workflow builds and pushes Linux amd64 images to [soenneker/cloudflare-clamav on Docker Hub](https://hub.docker.com/r/soenneker/cloudflare-clamav). Configure the GitHub Actions secret `DOCKERHUB_TOKEN` with a Docker Hub access token for `soenneker` that can push to this repository.
-
-Each run publishes `sha-<commit>`; a pushed `v*` tag also publishes that tag. Manual runs on `main` and stable `vMAJOR.MINOR.PATCH` tags update `latest`. Prerelease tags and manual runs on other branches do not update `latest`.
-
-```sh
-docker pull soenneker/cloudflare-clamav:latest
-```
+The `publish-image` workflow builds and pushes Linux amd64 images to `ghcr.io/soenneker/soenneker.cloudflare.clamav`. A manual run publishes `sha-<commit>`; a pushed `v*` tag also publishes that tag. The GHCR package must be made public after its first publication to allow anonymous pulls.

@@ -1,0 +1,11 @@
+**
+!global.json
+!src/
+!src/Soenneker.Cloudflare.Clamav/
+!src/Soenneker.Cloudflare.Clamav/**
+**/bin/
+**/obj/
+**/artifacts/
+**/appsettings.*.json
+**/Properties/
+!Dockerfile

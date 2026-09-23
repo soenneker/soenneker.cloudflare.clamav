@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/.github/">
+    <File Path=".github/renovate.json" />
+  </Folder>
+  <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/build-and-test.yml" />
+    <File Path=".github/workflows/codeql.yml" />
+    <File Path=".github/workflows/publish-image.yml" />
+    <File Path=".github/workflows/publish-openapi.yml" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Soenneker.Cloudflare.Clamav.Tests/Soenneker.Cloudflare.Clamav.Tests.csproj" />
+  </Folder>
+</Solution>
