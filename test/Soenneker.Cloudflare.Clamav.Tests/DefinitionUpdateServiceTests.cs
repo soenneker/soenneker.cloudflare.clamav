@@ -39,7 +39,7 @@ public sealed class DefinitionUpdateServiceTests
     }
 
     [Test]
-    public async Task Shutdown_cancels_wait_without_starting_an_update()
+    public async Task Immediate_shutdown_completes_without_starting_an_update()
     {
         var clamav = new FakeClamavUtil();
         using var service = new DefinitionUpdateService(clamav, new ConfigurationBuilder().Build(),
@@ -47,7 +47,9 @@ public sealed class DefinitionUpdateServiceTests
         await service.StartAsync(CancellationToken.None);
         await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(clamav.Calls).IsEqualTo(0);
-        await Assert.That(service.ExecuteTask!.IsCompletedSuccessfully).IsTrue();
+        // BackgroundService can cancel its scheduled task before ExecuteAsync starts on .NET 10.
+        await Assert.That(service.ExecuteTask!.IsCompleted).IsTrue();
+        await Assert.That(service.ExecuteTask.IsFaulted).IsFalse();
     }
 
     private sealed class FakeClamavUtil : IClamavUtil
