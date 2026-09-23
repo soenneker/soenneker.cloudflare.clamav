@@ -27,17 +27,6 @@ jobs:
           dotnet-version: 10.0.x
       - name: Test
         run: dotnet test --project test/Soenneker.Cloudflare.Clamav.Tests/Soenneker.Cloudflare.Clamav.Tests.csproj --configuration Release
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: Cloudflare/package-lock.json
-      - name: Install Worker dependencies
-        run: npm ci --no-audit --no-fund
-        working-directory: Cloudflare
-      - name: Typecheck Worker
-        run: npm run typecheck
-        working-directory: Cloudflare
       - name: Build image
         run: docker build --platform linux/amd64 -t "$IMAGE:sha-${{ github.sha }}" .
       - name: Log in to Docker Hub

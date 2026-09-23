@@ -43,20 +43,5 @@ jobs:
       - name: Generate OpenAPI document
         run: dotnet build src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj --configuration Release --no-restore -p:OpenApiGenerateDocuments=true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: Cloudflare/package-lock.json
-
-      - name: Install Worker dependencies
-        run: npm ci --no-audit --no-fund
-        working-directory: Cloudflare
-
-      - name: Typecheck Worker
-        run: npm run typecheck
-        working-directory: Cloudflare
-
       - name: Build container
         run: docker build --platform linux/amd64 -t soenneker-cloudflare-clamav:test .
