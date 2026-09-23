@@ -12,6 +12,7 @@ using Soenneker.Cloudflare.Clamav.Managers.Abstract;
 using Soenneker.Cloudflare.Clamav.Stores;
 using Soenneker.Cloudflare.Clamav.Stores.Abstract;
 using Soenneker.Cloudflare.Clamav.OpenApi;
+using Soenneker.Cloudflare.Clamav.Services;
 
 namespace Soenneker.Cloudflare.Clamav;
 
@@ -44,6 +45,7 @@ public sealed class Startup
             options.UseDaemon = true;
         });
         services.AddCloudflareR2UtilAsSingleton();
+        services.AddHostedService<DefinitionUpdateService>();
         services.AddBackgroundQueueAsSingleton();
         services.AddSingleton<IScanJobStore, R2ScanJobStore>();
         services.AddSingleton<IScannerManager, ScannerManager>();

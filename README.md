@@ -13,7 +13,7 @@ For .NET applications, pair the scanner with [Soenneker.Cloudflare.Clamav.OpenAp
 - **Deploy the image.** Run ClamAV on Cloudflare Containers or locally without installing the scanner on your application server.
 - **Keep integration simple.** Send file bytes over HTTP or use the typed .NET client.
 - **Choose your scan flow.** Wait for a verdict or submit a background job and poll for its result.
-- **Definition updates built in.** Scans request ClamAV definition updates through `Soenneker.Clamav.Util`.
+- **Definition updates built in.** The first scan initializes definitions through `Soenneker.Clamav.Util`, and a background service refreshes them hourly for long-running containers.
 - **Run in your own account.** Your Cloudflare deployment hosts the scanner and its R2 job records.
 
 ## How it works
@@ -258,6 +258,8 @@ docker build --platform linux/amd64 -t soenneker-cloudflare-clamav .
 - The default upload limit is **100 MiB**. Set `Scanner__MaximumFileSize` in the container environment to override it in bytes; upstream request limits still apply.
 - Each ClamAV scan has a **10-minute timeout**. Use background jobs when waiting on a single HTTP request is unsuitable.
 - The container needs outbound network access for R2 and definition updates, plus writable temporary and ClamAV working directories. First requests may take longer while the container starts and definitions initialize.
+- Definition refreshes run on a `PeriodicTimer`, starting one interval after application startup. The default interval is one hour; override `Scanner:DefinitionUpdateInterval` with a positive `TimeSpan`, for example container environment variable `Scanner__DefinitionUpdateInterval=02:00:00` for two hours. Updates run sequentially, failures are logged and retried on the next tick, and shutdown cancels the updater.
+- The running ClamAV daemon checks local database files every ten minutes and reloads changed definitions. This check does not download definitions, so newly downloaded signatures may take up to that check interval, plus reload time, to become active. Engine upgrades require an updated container image and redeployment.
 - **Background jobs are not a durable queue.** R2 preserves job records, but uploads and pending work remain inside the container. Container termination loses unfinished work, with no automatic retry; its persisted status can remain queued or processing.
 - `/health` checks ClamAV version availability. It does not verify R2 access or definition freshness.
 
