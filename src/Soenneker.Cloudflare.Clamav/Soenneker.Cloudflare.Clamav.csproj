@@ -17,13 +17,13 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.55" />
+        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.58" />
         <PackageReference Include="Soenneker.Cloudflare.R2" Version="4.0.60" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.51" />
-        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2509" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2280" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2713" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1238" />
+        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2510" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2281" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2714" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1239" />
     </ItemGroup>
 
     <Target Name="RemoveWindowsScannerAssetsFromLinuxPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
