@@ -3,6 +3,9 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
+        <PublishAot>true</PublishAot>
+        <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+        <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>$(NoWarn);1591</NoWarn>
         <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.OpenApi.Generated</InterceptorsNamespaces>
@@ -17,12 +20,12 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.63" />
-        <PackageReference Include="Soenneker.Cloudflare.R2" Version="4.0.65" />
+        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.64" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.52" />
+        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.20" />
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2514" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2288" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2721" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2289" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2722" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1243" />
     </ItemGroup>
 

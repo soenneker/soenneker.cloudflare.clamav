@@ -1,11 +1,12 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
-using Soenneker.Cloudflare.Clamav.Controllers;
+using Soenneker.Cloudflare.Clamav.Endpoints;
 using Soenneker.Cloudflare.Clamav.Enums;
 using Soenneker.Cloudflare.Clamav.Responses;
 
@@ -25,23 +26,25 @@ public static class ScannerOpenApi
     }
 
     /// <summary>Describes uploads that read the request stream directly and assigns stable operation identifiers.</summary>
-    /// <param name="operation">The controller operation being generated.</param>
-    /// <param name="context">Metadata for the controller action.</param>
+    /// <param name="operation">The endpoint operation being generated.</param>
+    /// <param name="context">Metadata for the endpoint.</param>
     /// <param name="cancellationToken">The document generation cancellation token.</param>
     /// <returns>A completed task after applying operation metadata.</returns>
     private static Task TransformOperation(OpenApiOperation operation, OpenApiOperationTransformerContext context,
         CancellationToken cancellationToken)
     {
-        if (context.Description.ActionDescriptor is not ControllerActionDescriptor action || action.ControllerTypeInfo.AsType() != typeof(ScannerController))
+        string? name = context.Description.ActionDescriptor.EndpointMetadata.OfType<IEndpointNameMetadata>().FirstOrDefault()?.EndpointName;
+        if (name is null)
             return Task.CompletedTask;
 
-        operation.OperationId = action.ActionName;
+        operation.OperationId = name;
         if (operation.Responses is not null)
         {
-            foreach (var response in operation.Responses)
+            foreach (KeyValuePair<string, IOpenApiResponse> response in operation.Responses)
             {
                 if (response.Value is not OpenApiResponse concrete || concrete.Content is null ||
-                    !concrete.Content.TryGetValue("application/json", out OpenApiMediaType? mediaType))
+                    (!concrete.Content.TryGetValue("application/json", out OpenApiMediaType? mediaType) &&
+                     !concrete.Content.TryGetValue("application/problem+json", out mediaType)))
                     continue;
 
                 string contentType = response.Key is "401" or "404" or "413" ? "application/problem+json" : "application/json";
@@ -57,7 +60,7 @@ public static class ScannerOpenApi
             }
         }
 
-        if (action.ActionName is nameof(ScannerController.Scan) or nameof(ScannerController.Queue))
+        if (name is nameof(ScannerEndpoints.Scan) or nameof(ScannerEndpoints.Queue))
         {
             operation.RequestBody = new OpenApiRequestBody
             {
@@ -130,7 +133,7 @@ public static class ScannerOpenApi
             Description = "The operator-configured Scanner:ApiKey supplied as Authorization: Bearer <key>. This is an API key, not a JWT."
         };
 
-        foreach (var path in document.Paths)
+        foreach (KeyValuePair<string, IOpenApiPathItem> path in document.Paths)
         {
             if (path.Value.Operations is null)
                 continue;

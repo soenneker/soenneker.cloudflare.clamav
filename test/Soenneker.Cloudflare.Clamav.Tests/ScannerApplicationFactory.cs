@@ -19,8 +19,8 @@ public sealed class ScannerApplicationFactory : WebApplicationFactory<Program>
             {
                 ["Scanner:ApiKey"] = "scanner-test-key",
                 ["Scanner:MaximumFileSize"] = "16",
-                ["Scanner:R2:Bucket"] = "scanner-tests",
-                ["Cloudflare:AccountId"] = "test-account",
+                ["Librarian:R2:BucketName"] = "scanner-tests",
+                ["Librarian:R2:AccountId"] = "test-account",
                 ["Cloudflare:ApiKey"] = "test-key",
                 ["Cloudflare:RequestResponseLogging"] = "true"
             }));

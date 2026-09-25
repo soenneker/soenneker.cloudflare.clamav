@@ -4,56 +4,41 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Cloudflare.Clamav.Responses;
 using Soenneker.Cloudflare.Clamav.Stores.Abstract;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Kiota.Abstractions;
-using Soenneker.Cloudflare.R2.Abstract;
+using Soenneker.Librarian.Abstractions;
+using Soenneker.Librarian.Abstractions.Transactions;
 using Soenneker.Utils.Json;
 
 namespace Soenneker.Cloudflare.Clamav.Stores;
 
 public sealed class R2ScanJobStore : IScanJobStore
 {
-    private readonly ICloudflareR2Util _r2;
-    private readonly string _accountId;
-    private readonly string _apiKey;
-    private readonly string _bucket;
+    private const string ContainerName = "scan-jobs";
 
-    public R2ScanJobStore(ICloudflareR2Util r2, IConfiguration configuration)
+    private readonly ILibrarianDatabase _database;
+
+    public R2ScanJobStore(ILibrarianDatabase database)
     {
-        _r2 = r2;
-        _accountId = Require(configuration, "Cloudflare:AccountId");
-        _apiKey = Require(configuration, "Cloudflare:ApiKey");
-        _bucket = Require(configuration, "Scanner:R2:Bucket");
+        _database = database;
     }
 
     public async ValueTask Set(VirusScanJobResponse job, CancellationToken cancellationToken = default)
     {
-        byte[] json = JsonUtil.SerializeToUtf8Bytes(job, LibraryJsonContext.Get<VirusScanJobResponse>());
-        await using var stream = new MemoryStream(json, writable: false);
-        await _r2.PutObject(_accountId, _bucket, GetKey(job.Id), stream, "application/json", _apiKey, cancellationToken);
+        string json = JsonUtil.Serialize(job, LibraryJsonContext.Get<VirusScanJobResponse>());
+        var batch = new LibrarianBatch([new LibrarianWrite(ContainerName, job.Id, json)]);
+
+        // R2 batches persist the snapshot before publishing the new in-memory state.
+        if (!await _database.Execute(batch, cancellationToken))
+            throw new InvalidOperationException($"Scan job '{job.Id}' could not be persisted.");
     }
 
     public async ValueTask<VirusScanJobResponse?> Get(string jobId, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await using Stream? stream = await _r2.GetObject(_accountId, _bucket, GetKey(jobId), _apiKey, cancellationToken);
-            if (stream is null)
-                return null;
-
-            return await JsonUtil.Deserialize<VirusScanJobResponse>(stream, LibraryJsonContext.Get<VirusScanJobResponse>(), cancellationToken: cancellationToken)
-                ?? throw new InvalidDataException($"Scan job '{jobId}' did not contain a valid job record.");
-        }
-        catch (ApiException exception) when (exception.ResponseStatusCode == 404)
-        {
+        ILibrarianContainer container = await _database.GetContainer(ContainerName, cancellationToken);
+        string? json = await container.GetItem(jobId, cancellationToken);
+        if (json is null)
             return null;
-        }
+
+        return JsonUtil.Deserialize(json, LibraryJsonContext.Get<VirusScanJobResponse>())
+            ?? throw new InvalidDataException($"Scan job '{jobId}' did not contain a valid job record.");
     }
-
-    private static string GetKey(string jobId) => $"scanner/jobs/{jobId}.json";
-
-    private static string Require(IConfiguration configuration, string key) =>
-        configuration[key] is {Length: > 0} value
-            ? value
-            : throw new InvalidOperationException($"{key} is not configured.");
 }

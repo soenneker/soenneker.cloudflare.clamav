@@ -7,7 +7,11 @@ namespace Soenneker.Cloudflare.Clamav.Stores.Abstract;
 /// <summary>
 /// Persists and retrieves malware scan job states.
 /// </summary>
-/// <remarks>Stores job metadata and results, not uploaded file contents or executable queue entries.</remarks>
+/// <remarks>
+/// Stores job metadata and results, not uploaded file contents or executable queue entries.
+/// The R2 provider uses a Librarian snapshot configured by Librarian:R2:AccountId, BucketName, and ObjectKey.
+/// Only one scanner instance may own a snapshot. Legacy per-job R2 objects are not imported automatically.
+/// </remarks>
 public interface IScanJobStore
 {
     /// <summary>

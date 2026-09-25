@@ -91,8 +91,8 @@ Choose a strong scanner API key and use that same value in your calling applicat
 | Worker setting | Container environment variable | Purpose |
 | --- | --- | --- |
 | `SCANNER_API_KEY` (secret) | `Scanner__ApiKey` | Authenticates scan and job requests |
-| `SCANNER_R2_BUCKET` | `Scanner__R2__Bucket` | R2 bucket for job records |
-| `CLOUDFLARE_ACCOUNT_ID` | `Cloudflare__AccountId` | Account containing the R2 bucket |
+| `SCANNER_R2_BUCKET` | `Librarian__R2__BucketName` | R2 bucket for job records |
+| `CLOUDFLARE_ACCOUNT_ID` | `Librarian__R2__AccountId` | Account containing the R2 bucket |
 | `CLOUDFLARE_API_TOKEN` (secret) | `Cloudflare__ApiKey` | Cloudflare API access for R2 |
 
 ### 3. Connect the Worker to the container
@@ -117,8 +117,8 @@ export class ClamavContainer extends Container<Env> {
 
   envVars = {
     Scanner__ApiKey: this.env.SCANNER_API_KEY,
-    Scanner__R2__Bucket: this.env.SCANNER_R2_BUCKET,
-    Cloudflare__AccountId: this.env.CLOUDFLARE_ACCOUNT_ID,
+    Librarian__R2__BucketName: this.env.SCANNER_R2_BUCKET,
+    Librarian__R2__AccountId: this.env.CLOUDFLARE_ACCOUNT_ID,
     Cloudflare__ApiKey: this.env.CLOUDFLARE_API_TOKEN,
   };
 }
@@ -233,8 +233,8 @@ Create a local `scanner.env` file and keep it out of source control:
 
 ```dotenv
 Scanner__ApiKey=YOUR_SCANNER_API_KEY
-Scanner__R2__Bucket=YOUR_R2_BUCKET
-Cloudflare__AccountId=YOUR_CLOUDFLARE_ACCOUNT_ID
+Librarian__R2__BucketName=YOUR_R2_BUCKET
+Librarian__R2__AccountId=YOUR_CLOUDFLARE_ACCOUNT_ID
 Cloudflare__ApiKey=YOUR_CLOUDFLARE_API_TOKEN
 ```
 
@@ -260,6 +260,7 @@ docker build --platform linux/amd64 -t soenneker-cloudflare-clamav .
 - The container needs outbound network access for R2 and definition updates, plus writable temporary and ClamAV working directories. First requests may take longer while the container starts and definitions initialize.
 - Definition refreshes run on a `PeriodicTimer`, starting one interval after application startup. The default interval is one hour; override `Scanner:DefinitionUpdateInterval` with a positive `TimeSpan`, for example container environment variable `Scanner__DefinitionUpdateInterval=02:00:00` for two hours. Updates run sequentially, failures are logged and retried on the next tick, and shutdown cancels the updater.
 - The running ClamAV daemon checks local database files every ten minutes and reloads changed definitions. This check does not download definitions, so newly downloaded signatures may take up to that check interval, plus reload time, to become active. Engine upgrades require an updated container image and redeployment.
+- Job records use a single Librarian R2 snapshot at `scanner/jobs.json`; override it with `Librarian__R2__ObjectKey`. Only one scanner instance may own each snapshot. Every job update persists the complete snapshot before returning. Legacy `scanner/jobs/{id}.json` objects are not imported automatically.
 - **Background jobs are not a durable queue.** R2 preserves job records, but uploads and pending work remain inside the container. Container termination loses unfinished work, with no automatic retry; its persisted status can remain queued or processing.
 - `/health` checks ClamAV version availability. It does not verify R2 access or definition freshness.
 

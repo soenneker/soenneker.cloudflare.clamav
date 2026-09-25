@@ -8,6 +8,10 @@ namespace Soenneker.Cloudflare.Clamav.Stores;
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, ReadCommentHandling = JsonCommentHandling.Skip, UseStringEnumConverter = true)]
 [JsonSerializable(typeof(VirusScanJobResponse))]
+[JsonSerializable(typeof(VirusScanResponse))]
+[JsonSerializable(typeof(VirusScanJobAcceptedResponse))]
+[JsonSerializable(typeof(HealthResponse))]
+[JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 internal partial class LibraryJsonContext : JsonSerializerContext
 {
     internal static JsonTypeInfo<T> Get<T>() =>
