@@ -28,7 +28,7 @@ public sealed class R2ScanJobStore : IScanJobStore
 
     public async ValueTask Set(VirusScanJobResponse job, CancellationToken cancellationToken = default)
     {
-        byte[] json = JsonUtil.SerializeToUtf8Bytes(job);
+        byte[] json = JsonUtil.SerializeToUtf8Bytes(job, LibraryJsonContext.Get<VirusScanJobResponse>());
         await using var stream = new MemoryStream(json, writable: false);
         await _r2.PutObject(_accountId, _bucket, GetKey(job.Id), stream, "application/json", _apiKey, cancellationToken);
     }
@@ -41,7 +41,7 @@ public sealed class R2ScanJobStore : IScanJobStore
             if (stream is null)
                 return null;
 
-            return await JsonUtil.Deserialize<VirusScanJobResponse>(stream, cancellationToken: cancellationToken)
+            return await JsonUtil.Deserialize<VirusScanJobResponse>(stream, LibraryJsonContext.Get<VirusScanJobResponse>(), cancellationToken: cancellationToken)
                 ?? throw new InvalidDataException($"Scan job '{jobId}' did not contain a valid job record.");
         }
         catch (ApiException exception) when (exception.ResponseStatusCode == 404)
