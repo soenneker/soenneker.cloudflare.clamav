@@ -22,10 +22,10 @@
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" PrivateAssets="all" />
         <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.67" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.52" />
-        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.20" />
+        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.21" />
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2515" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2289" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2723" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2725" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1243" />
     </ItemGroup>
 
