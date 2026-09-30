@@ -26,7 +26,7 @@
         <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.39" />
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2515" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2292" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2734" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2735" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1244" />
     </ItemGroup>
 
