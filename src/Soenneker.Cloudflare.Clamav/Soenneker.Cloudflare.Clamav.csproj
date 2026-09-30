@@ -21,12 +21,12 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.73" />
+        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.75" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.52" />
-        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.35" />
+        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.39" />
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2515" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2291" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2730" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2731" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1243" />
     </ItemGroup>
 
