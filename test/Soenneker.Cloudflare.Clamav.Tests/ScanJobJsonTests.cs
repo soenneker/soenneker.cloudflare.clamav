@@ -16,7 +16,7 @@ public sealed class ScanJobJsonTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task Job_round_trips_with_JsonUtil(bool completed)
+    public async ValueTask Job_round_trips_with_JsonUtil(bool completed)
     {
         var createdAt = new DateTimeOffset(2026, 9, 23, 0, 0, 0, TimeSpan.Zero);
         var job = new VirusScanJobResponse(Guid.NewGuid().ToString(), completed ? "completed" : "queued",

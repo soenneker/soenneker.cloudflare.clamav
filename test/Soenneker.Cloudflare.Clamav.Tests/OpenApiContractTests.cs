@@ -12,7 +12,7 @@ public sealed class OpenApiContractTests
     /// <summary>Verifies raw upload schemas, response models, XML descriptions, and the anonymous health operation.</summary>
     /// <returns>A task that completes after checking the generated contract.</returns>
     [Test]
-    public async Task Generated_document_describes_scanner_contract()
+    public async ValueTask Generated_document_describes_scanner_contract()
     {
         await using var application = new ScannerApplicationFactory();
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();

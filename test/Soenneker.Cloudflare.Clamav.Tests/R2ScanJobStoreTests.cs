@@ -12,7 +12,7 @@ namespace Soenneker.Cloudflare.Clamav.Tests;
 public sealed class R2ScanJobStoreTests
 {
     [Test]
-    public async Task Set_persists_jobs_and_updates_before_returning()
+    public async ValueTask Set_persists_jobs_and_updates_before_returning()
     {
         await using var database = new TestSnapshotDatabase();
         var store = new R2ScanJobStore(database);
@@ -33,7 +33,7 @@ public sealed class R2ScanJobStoreTests
     }
 
     [Test]
-    public async Task Failed_snapshot_write_does_not_publish_new_job_state()
+    public async ValueTask Failed_snapshot_write_does_not_publish_new_job_state()
     {
         await using var database = new TestSnapshotDatabase();
         var store = new R2ScanJobStore(database);

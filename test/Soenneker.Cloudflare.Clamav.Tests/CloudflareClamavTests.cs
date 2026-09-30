@@ -22,7 +22,7 @@ public sealed class CloudflareClamavTests
     [Test]
     [Arguments("/scan")]
     [Arguments("/scan/jobs")]
-    public async Task Scan_requires_authentication(string path)
+    public async ValueTask Scan_requires_authentication(string path)
     {
         await using var application = new ScannerApplicationFactory();
         using System.Net.Http.HttpClient client = application.CreateClient();
@@ -40,7 +40,7 @@ public sealed class CloudflareClamavTests
     [Test]
     [Arguments("/scan")]
     [Arguments("/scan/jobs")]
-    public async Task Authorized_oversized_upload_is_rejected(string path)
+    public async ValueTask Authorized_oversized_upload_is_rejected(string path)
     {
         await using var application = new ScannerApplicationFactory();
         using System.Net.Http.HttpClient client = application.CreateClient();
@@ -53,7 +53,7 @@ public sealed class CloudflareClamavTests
     /// <summary>Verifies that malformed job identifiers receive HTTP 404 before storage is queried.</summary>
     /// <returns>A task that completes after the HTTP response is checked.</returns>
     [Test]
-    public async Task Invalid_job_id_is_rejected_without_querying_R2()
+    public async ValueTask Invalid_job_id_is_rejected_without_querying_R2()
     {
         await using var application = new ScannerApplicationFactory();
         using System.Net.Http.HttpClient client = application.CreateClient();
@@ -62,7 +62,7 @@ public sealed class CloudflareClamavTests
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
     [Test]
-    public async Task Responses_use_generated_metadata_and_preserve_job_location()
+    public async ValueTask Responses_use_generated_metadata_and_preserve_job_location()
     {
         await using var factory = new ScannerApplicationFactory();
         var manager = new FakeScannerManager();

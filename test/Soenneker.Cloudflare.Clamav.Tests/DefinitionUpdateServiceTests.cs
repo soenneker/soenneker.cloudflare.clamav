@@ -14,7 +14,7 @@ namespace Soenneker.Cloudflare.Clamav.Tests;
 public sealed class DefinitionUpdateServiceTests
 {
     [Test]
-    public async Task Retries_failed_updates_and_cancels_inflight_update_on_shutdown()
+    public async ValueTask Retries_failed_updates_and_cancels_inflight_update_on_shutdown()
     {
         var clamav = new FakeClamavUtil();
         IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -39,7 +39,7 @@ public sealed class DefinitionUpdateServiceTests
     }
 
     [Test]
-    public async Task Immediate_shutdown_completes_without_starting_an_update()
+    public async ValueTask Immediate_shutdown_completes_without_starting_an_update()
     {
         var clamav = new FakeClamavUtil();
         using var service = new DefinitionUpdateService(clamav, new ConfigurationBuilder().Build(),
