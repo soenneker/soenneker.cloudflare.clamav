@@ -33,7 +33,7 @@ jobs:
       - name: Test scanner and API contract
         run: dotnet test --project test/Soenneker.Cloudflare.Clamav.Tests/Soenneker.Cloudflare.Clamav.Tests.csproj --configuration Release
       - name: Save generated document
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi
           path: artifacts/openapi/openapi.json
