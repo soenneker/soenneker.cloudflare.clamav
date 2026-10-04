@@ -8,7 +8,7 @@ COPY src/ src/
 RUN dotnet publish src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj \
     --configuration Release --runtime linux-x64 --no-restore --output /app/publish -p:PublishAot=true
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
+FROM mcr.microsoft.com/dotnet/runtime-deps:11.0
 WORKDIR /app
 COPY --from=build /app/publish/ ./
 LABEL org.opencontainers.image.source="https://github.com/soenneker/soenneker.cloudflare.clamav"
