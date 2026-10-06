@@ -21,7 +21,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.82" />
+        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.83" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.53" />
         <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.58" />
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2516" />
