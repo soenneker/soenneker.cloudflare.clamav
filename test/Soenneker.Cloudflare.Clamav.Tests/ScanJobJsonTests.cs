@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Soenneker.Cloudflare.Clamav.Responses;
 using Soenneker.Utils.Json;
+using System.Threading;
 
 namespace Soenneker.Cloudflare.Clamav.Tests;
 
@@ -16,7 +17,7 @@ public sealed class ScanJobJsonTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async ValueTask Job_round_trips_with_JsonUtil(bool completed)
+    public async ValueTask Job_round_trips_with_JsonUtil(bool completed, CancellationToken cancellationToken)
     {
         var createdAt = new DateTimeOffset(2026, 9, 23, 0, 0, 0, TimeSpan.Zero);
         var job = new VirusScanJobResponse(Guid.NewGuid().ToString(), completed ? "completed" : "queued",
@@ -26,7 +27,7 @@ public sealed class ScanJobJsonTests
         byte[] json = JsonUtil.SerializeToUtf8Bytes(job);
         await Assert.That(Encoding.UTF8.GetString(json)).Contains("\"createdAt\"");
         await using var stream = new MemoryStream(json);
-        VirusScanJobResponse? restored = await JsonUtil.Deserialize<VirusScanJobResponse>(stream, cancellationToken: default);
+        VirusScanJobResponse? restored = await JsonUtil.Deserialize<VirusScanJobResponse>(stream, cancellationToken: cancellationToken);
         await Assert.That(restored).IsEqualTo(job);
     }
 }

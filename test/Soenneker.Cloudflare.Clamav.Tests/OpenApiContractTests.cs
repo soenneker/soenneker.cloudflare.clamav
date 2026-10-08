@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi;
+using System.Threading;
 
 namespace Soenneker.Cloudflare.Clamav.Tests;
 
@@ -12,12 +13,12 @@ public sealed class OpenApiContractTests
     /// <summary>Verifies raw upload schemas, response models, XML descriptions, and the anonymous health operation.</summary>
     /// <returns>A task that completes after checking the generated contract.</returns>
     [Test]
-    public async ValueTask Generated_document_describes_scanner_contract()
+    public async ValueTask Generated_document_describes_scanner_contract(CancellationToken cancellationToken)
     {
         await using var application = new ScannerApplicationFactory();
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         var provider = scope.ServiceProvider.GetRequiredKeyedService<IOpenApiDocumentProvider>("v1");
-        OpenApiDocument document = await provider.GetOpenApiDocumentAsync();
+        OpenApiDocument document = await provider.GetOpenApiDocumentAsync(cancellationToken: cancellationToken);
 
         await Assert.That(document.Paths.Count).IsEqualTo(4);
         OpenApiOperation health = document.Paths["/health"].Operations!.Values.Single();

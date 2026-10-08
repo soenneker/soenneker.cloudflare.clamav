@@ -12,39 +12,39 @@ namespace Soenneker.Cloudflare.Clamav.Tests;
 public sealed class R2ScanJobStoreTests
 {
     [Test]
-    public async ValueTask Set_persists_jobs_and_updates_before_returning()
+    public async ValueTask Set_persists_jobs_and_updates_before_returning(CancellationToken cancellationToken)
     {
         await using var database = new TestSnapshotDatabase();
         var store = new R2ScanJobStore(database);
         var job = new VirusScanJobResponse(Guid.NewGuid().ToString("D"), "queued", null, null, DateTimeOffset.UtcNow, null);
-        await Assert.That(await store.Get(job.Id)).IsNull();
-        await store.Set(job);
+        await Assert.That(await store.Get(job.Id, cancellationToken: cancellationToken)).IsNull();
+        await store.Set(job, cancellationToken: cancellationToken);
         await Assert.That(database.Writes).IsEqualTo(1);
 
         VirusScanJobResponse completed = job with
         {
             Status = "completed", Result = new VirusScanResponse(true, null, "ClamAV"), CompletedAt = DateTimeOffset.UtcNow
         };
-        await store.Set(completed);
+        await store.Set(completed, cancellationToken: cancellationToken);
         await Assert.That(database.Writes).IsEqualTo(2);
 
         await using var reloaded = new TestSnapshotDatabase { Snapshot = database.Snapshot };
-        await Assert.That(await new R2ScanJobStore(reloaded).Get(job.Id)).IsEqualTo(completed);
+        await Assert.That(await new R2ScanJobStore(reloaded).Get(job.Id, cancellationToken: cancellationToken)).IsEqualTo(completed);
     }
 
     [Test]
-    public async ValueTask Failed_snapshot_write_does_not_publish_new_job_state()
+    public async ValueTask Failed_snapshot_write_does_not_publish_new_job_state(CancellationToken cancellationToken)
     {
         await using var database = new TestSnapshotDatabase();
         var store = new R2ScanJobStore(database);
         var job = new VirusScanJobResponse(Guid.NewGuid().ToString("D"), "queued", null, null, DateTimeOffset.UtcNow, null);
-        await store.Set(job);
+        await store.Set(job, cancellationToken: cancellationToken);
         string? persisted = database.Snapshot;
         database.FailWrites = true;
         bool failed = false;
         try
         {
-            await store.Set(job with { Status = "processing" });
+            await store.Set(job with { Status = "processing" }, cancellationToken: cancellationToken);
         }
         catch (IOException)
         {
@@ -56,7 +56,7 @@ public sealed class R2ScanJobStoreTests
         }
         await Assert.That(failed).IsTrue();
         await Assert.That(database.Snapshot).IsEqualTo(persisted);
-        await Assert.That(await store.Get(job.Id)).IsEqualTo(job);
+        await Assert.That(await store.Get(job.Id, cancellationToken: cancellationToken)).IsEqualTo(job);
     }
 
     private sealed class TestSnapshotDatabase() : SnapshotLibrarianDatabase(NullLogger.Instance)

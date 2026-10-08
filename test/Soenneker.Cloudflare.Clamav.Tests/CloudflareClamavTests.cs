@@ -22,12 +22,12 @@ public sealed class CloudflareClamavTests
     [Test]
     [Arguments("/scan")]
     [Arguments("/scan/jobs")]
-    public async ValueTask Scan_requires_authentication(string path)
+    public async ValueTask Scan_requires_authentication(string path, CancellationToken cancellationToken)
     {
         await using var application = new ScannerApplicationFactory();
         using System.Net.Http.HttpClient client = application.CreateClient();
         using var content = new ByteArrayContent([1]);
-        using HttpResponseMessage response = await client.PostAsync(path, content);
+        using HttpResponseMessage response = await client.PostAsync(path, content, cancellationToken: cancellationToken);
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
@@ -40,29 +40,29 @@ public sealed class CloudflareClamavTests
     [Test]
     [Arguments("/scan")]
     [Arguments("/scan/jobs")]
-    public async ValueTask Authorized_oversized_upload_is_rejected(string path)
+    public async ValueTask Authorized_oversized_upload_is_rejected(string path, CancellationToken cancellationToken)
     {
         await using var application = new ScannerApplicationFactory();
         using System.Net.Http.HttpClient client = application.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "scanner-test-key");
         using var content = new ByteArrayContent(new byte[17]);
-        using HttpResponseMessage response = await client.PostAsync(path, content);
+        using HttpResponseMessage response = await client.PostAsync(path, content, cancellationToken: cancellationToken);
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.RequestEntityTooLarge);
     }
 
     /// <summary>Verifies that malformed job identifiers receive HTTP 404 before storage is queried.</summary>
     /// <returns>A task that completes after the HTTP response is checked.</returns>
     [Test]
-    public async ValueTask Invalid_job_id_is_rejected_without_querying_R2()
+    public async ValueTask Invalid_job_id_is_rejected_without_querying_R2(CancellationToken cancellationToken)
     {
         await using var application = new ScannerApplicationFactory();
         using System.Net.Http.HttpClient client = application.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "scanner-test-key");
-        using HttpResponseMessage response = await client.GetAsync("/scan/jobs/not-a-guid");
+        using HttpResponseMessage response = await client.GetAsync("/scan/jobs/not-a-guid", cancellationToken: cancellationToken);
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
     [Test]
-    public async ValueTask Responses_use_generated_metadata_and_preserve_job_location()
+    public async ValueTask Responses_use_generated_metadata_and_preserve_job_location(CancellationToken cancellationToken)
     {
         await using var factory = new ScannerApplicationFactory();
         var manager = new FakeScannerManager();
@@ -85,26 +85,26 @@ public sealed class CloudflareClamavTests
         foreach (bool ready in new[] { true, false })
         {
             manager.Ready = ready;
-            using HttpResponseMessage health = await client.GetAsync("/health");
+            using HttpResponseMessage health = await client.GetAsync("/health", cancellationToken: cancellationToken);
             await Assert.That(health.StatusCode).IsEqualTo(ready ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable);
-            using JsonDocument json = JsonDocument.Parse(await health.Content.ReadAsStringAsync());
+            using JsonDocument json = JsonDocument.Parse(await health.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
             await Assert.That(json.RootElement.GetProperty("ready").GetBoolean()).IsEqualTo(ready);
         }
         using var scanContent = new ByteArrayContent([1]);
-        using HttpResponseMessage scan = await client.PostAsync("/scan", scanContent);
+        using HttpResponseMessage scan = await client.PostAsync("/scan", scanContent, cancellationToken: cancellationToken);
         await Assert.That(scan.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using JsonDocument verdict = JsonDocument.Parse(await scan.Content.ReadAsStringAsync());
+        using JsonDocument verdict = JsonDocument.Parse(await scan.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
         await Assert.That(verdict.RootElement.GetProperty("clean").GetBoolean()).IsTrue();
         await Assert.That(verdict.RootElement.GetProperty("threat").ValueKind).IsEqualTo(JsonValueKind.Null);
 
         using var queueContent = new ByteArrayContent([1]);
-        using HttpResponseMessage queued = await client.PostAsync("/scan/jobs", queueContent);
+        using HttpResponseMessage queued = await client.PostAsync("/scan/jobs", queueContent, cancellationToken: cancellationToken);
         await Assert.That(queued.StatusCode).IsEqualTo(HttpStatusCode.Accepted);
-        using JsonDocument accepted = JsonDocument.Parse(await queued.Content.ReadAsStringAsync());
+        using JsonDocument accepted = JsonDocument.Parse(await queued.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
         await Assert.That(accepted.RootElement.GetProperty("statusUrl").GetString()).IsEqualTo(queued.Headers.Location!.ToString());
-        using HttpResponseMessage job = await client.GetAsync(queued.Headers.Location);
+        using HttpResponseMessage job = await client.GetAsync(queued.Headers.Location, cancellationToken: cancellationToken);
         await Assert.That(job.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using JsonDocument record = JsonDocument.Parse(await job.Content.ReadAsStringAsync());
+        using JsonDocument record = JsonDocument.Parse(await job.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
         await Assert.That(record.RootElement.GetProperty("id").GetString()).IsEqualTo(manager.Job.Id);
         await Assert.That(record.RootElement.GetProperty("result").ValueKind).IsEqualTo(JsonValueKind.Null);
     }

@@ -14,7 +14,7 @@ namespace Soenneker.Cloudflare.Clamav.Tests;
 public sealed class DefinitionUpdateServiceTests
 {
     [Test]
-    public async ValueTask Retries_failed_updates_and_cancels_inflight_update_on_shutdown()
+    public async ValueTask Retries_failed_updates_and_cancels_inflight_update_on_shutdown(CancellationToken cancellationToken)
     {
         var clamav = new FakeClamavUtil();
         IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -22,11 +22,11 @@ public sealed class DefinitionUpdateServiceTests
             ["Scanner:DefinitionUpdateInterval"] = "00:00:00.020"
         }).Build();
         using var service = new DefinitionUpdateService(clamav, configuration, NullLogger<DefinitionUpdateService>.Instance);
-        await service.StartAsync(CancellationToken.None);
+        await service.StartAsync(cancellationToken);
         try
         {
-            await clamav.SecondUpdateStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await Task.Delay(100);
+            await clamav.SecondUpdateStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken: cancellationToken);
+            await Task.Delay(100, cancellationToken: cancellationToken);
             await Assert.That(clamav.Calls).IsEqualTo(2);
         }
         finally
@@ -39,13 +39,13 @@ public sealed class DefinitionUpdateServiceTests
     }
 
     [Test]
-    public async ValueTask Immediate_shutdown_completes_without_starting_an_update()
+    public async ValueTask Immediate_shutdown_completes_without_starting_an_update(CancellationToken cancellationToken)
     {
         var clamav = new FakeClamavUtil();
         using var service = new DefinitionUpdateService(clamav, new ConfigurationBuilder().Build(),
             NullLogger<DefinitionUpdateService>.Instance);
-        await service.StartAsync(CancellationToken.None);
-        await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        await service.StartAsync(cancellationToken);
+        await service.StopAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(10), cancellationToken: cancellationToken);
         await Assert.That(clamav.Calls).IsEqualTo(0);
         // BackgroundService can cancel its scheduled task before ExecuteAsync starts on .NET 10.
         await Assert.That(service.ExecuteTask!.IsCompleted).IsTrue();
