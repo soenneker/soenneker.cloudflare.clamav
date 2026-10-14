@@ -24,10 +24,10 @@
         <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.103" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.61" />
         <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.95" />
-        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2537" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2314" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2751" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1258" />
+        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2539" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2315" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2752" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1259" />
     </ItemGroup>
 
     <Target Name="RemoveWindowsScannerAssetsFromLinuxPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
