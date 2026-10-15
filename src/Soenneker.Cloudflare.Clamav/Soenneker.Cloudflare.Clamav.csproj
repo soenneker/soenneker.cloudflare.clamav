@@ -21,13 +21,13 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.13" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.105" />
-        <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.62" />
-        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.95" />
-        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2539" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2316" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2753" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1261" />
+        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.106" />
+        <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.64" />
+        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.101" />
+        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2540" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2319" />
+        <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2756" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1264" />
     </ItemGroup>
 
     <Target Name="RemoveWindowsScannerAssetsFromLinuxPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
