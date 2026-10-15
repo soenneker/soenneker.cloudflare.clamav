@@ -25,7 +25,7 @@
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.62" />
         <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.95" />
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2539" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2316" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2319" />
         <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2753" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1261" />
     </ItemGroup>
