@@ -27,7 +27,7 @@
         <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2539" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2316" />
         <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2753" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1261" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1264" />
     </ItemGroup>
 
     <Target Name="RemoveWindowsScannerAssetsFromLinuxPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
