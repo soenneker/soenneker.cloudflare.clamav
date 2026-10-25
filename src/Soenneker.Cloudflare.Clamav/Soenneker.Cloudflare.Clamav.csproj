@@ -20,7 +20,7 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
-        <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.13" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.14" PrivateAssets="all" />
         <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.110" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.64" />
         <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.104" />
