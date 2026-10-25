@@ -24,7 +24,7 @@
         <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.110" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.64" />
         <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.104" />
-        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2540" />
+        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2541" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2319" />
         <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2757" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1264" />
