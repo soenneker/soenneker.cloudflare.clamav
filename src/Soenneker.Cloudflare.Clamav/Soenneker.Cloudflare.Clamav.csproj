@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <IsAotCompatible>true</IsAotCompatible>
         <Nullable>enable</Nullable>
         <PublishAot>true</PublishAot>
@@ -19,13 +19,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
-        <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.13" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.110" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="11.0.0-rc.3.26522.148" />
+        <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="11.0.0-rc.3.26522.148" PrivateAssets="all" />
+        <PackageReference Include="Soenneker.Clamav.Util" Version="4.0.119" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="4.0.64" />
-        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.104" />
-        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2540" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2319" />
+        <PackageReference Include="Soenneker.Librarian.R2" Version="4.0.110" />
+        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="4.0.2542" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2320" />
         <PackageReference Include="Soenneker.Utils.Json" Version="4.0.2757" />
         <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1264" />
     </ItemGroup>

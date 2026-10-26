@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.100-rc.3.26522.148
       - name: Generate OpenAPI document
         run: dotnet build src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj --configuration Release -p:OpenApiGenerateDocuments=true
       - name: Test scanner and API contract

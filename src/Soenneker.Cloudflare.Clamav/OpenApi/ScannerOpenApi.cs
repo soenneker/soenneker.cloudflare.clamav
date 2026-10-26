@@ -43,12 +43,12 @@ public static class ScannerOpenApi
             foreach (KeyValuePair<string, IOpenApiResponse> response in operation.Responses)
             {
                 if (response.Value is not OpenApiResponse concrete || concrete.Content is null ||
-                    (!concrete.Content.TryGetValue("application/json", out OpenApiMediaType? mediaType) &&
+                    (!concrete.Content.TryGetValue("application/json", out IOpenApiMediaType? mediaType) &&
                      !concrete.Content.TryGetValue("application/problem+json", out mediaType)))
                     continue;
 
                 string contentType = response.Key is "401" or "404" or "413" ? "application/problem+json" : "application/json";
-                concrete.Content = new Dictionary<string, OpenApiMediaType> { [contentType] = mediaType };
+                concrete.Content = new Dictionary<string, IOpenApiMediaType> { [contentType] = mediaType };
                 if (response.Key == "401")
                 {
                     concrete.Content["text/plain"] = new OpenApiMediaType
@@ -66,9 +66,9 @@ public static class ScannerOpenApi
             {
                 Required = true,
                 Description = "Raw file bytes, not multipart form data. The default upload limit is 100 MiB and can be configured by the operator.",
-                Content = new Dictionary<string, OpenApiMediaType>
+                Content = new Dictionary<string, IOpenApiMediaType>
                 {
-                    ["application/octet-stream"] = new()
+                    ["application/octet-stream"] = new OpenApiMediaType()
                     {
                         Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "binary" }
                     }
