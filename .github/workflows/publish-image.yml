@@ -95,7 +95,7 @@ jobs:
           cosign sign --yes "$IMAGE@$DIGEST"
           cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-name: docker.io/soenneker/cloudflare-clamav
           subject-digest: ${{ steps.push.outputs.digest }}
