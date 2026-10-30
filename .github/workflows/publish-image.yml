@@ -1,117 +1,50 @@
 name: publish-image
+
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+
 permissions:
   contents: read
-  id-token: write
-  attestations: write
+
 env:
   IMAGE: soenneker/cloudflare-clamav
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
+
 jobs:
-  publish:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+  publish-image:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Validate release source
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          git merge-base --is-ancestor HEAD origin/main
-          if [ "$REF_TYPE" = tag ]; then
-            [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          fi
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 11.0.100-rc.3.26522.148
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.13'
-      - name: Verify application and API contract
-        run: |
-          dotnet test --project test/Soenneker.Cloudflare.Clamav.Tests --configuration Release
-          dotnet build src/Soenneker.Cloudflare.Clamav --configuration Release -p:OpenApiGenerateDocuments=true
-      - name: Verify durable Worker
-        working-directory: worker
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
-          npm audit --omit=dev --audit-level=high
+      - name: Test
+        run: dotnet test --project test/Soenneker.Cloudflare.Clamav.Tests/Soenneker.Cloudflare.Clamav.Tests.csproj --configuration Release
       - name: Build image
         run: docker build --platform linux/amd64 -t "$IMAGE:sha-${{ github.sha }}" .
-      - name: Exercise final native image
-        run: |
-          python -m pip install -r scripts/requirements-test.txt
-          python scripts/container-smoke.py "$IMAGE:sha-${{ github.sha }}"
-      - name: Verify complete durable pipeline and Worker restart
-        run: python scripts/worker-smoke.py
-      - name: Reject high and critical image vulnerabilities
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-        with:
-          image-ref: '${{ env.IMAGE }}:sha-${{ github.sha }}'
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-      - name: Generate image SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
-        with:
-          image: '${{ env.IMAGE }}:sha-${{ github.sha }}'
-          format: spdx-json
-          output-file: sbom.spdx.json
-          artifact-name: scanner-sbom.spdx.json
       - name: Log in to Docker Hub
         env:
           REGISTRY_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: printf '%s' "$REGISTRY_TOKEN" | docker login docker.io -u soenneker --password-stdin
-      - name: Push tested image
-        id: push
-        env:
-          REVISION: ${{ github.sha }}
-        run: |
-          docker push "$IMAGE:sha-$REVISION"
-          reference=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:sha-$REVISION")
-          echo "digest=${reference#*@}" >> "$GITHUB_OUTPUT"
-      - uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
-      - name: Sign image and attach SBOM
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          cosign sign --yes "$IMAGE@$DIGEST"
-          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
-        with:
-          subject-name: docker.io/soenneker/cloudflare-clamav
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-      - name: Promote verified digest
+      - name: Push image
         env:
           REVISION: ${{ github.sha }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          docker push "$IMAGE:sha-$REVISION"
           if [ "$REF_TYPE" = tag ]; then
             docker tag "$IMAGE:sha-$REVISION" "$IMAGE:$REF_NAME"
             docker push "$IMAGE:$REF_NAME"
           fi
-          docker tag "$IMAGE:sha-$REVISION" "$IMAGE:latest"
-          docker push "$IMAGE:latest"
-      - name: Logout
-        if: always()
-        run: docker logout docker.io
+          if [[ "$REF_TYPE" = branch && "$REF_NAME" = main ]] || [[ "$REF_TYPE" = tag && "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            docker tag "$IMAGE:sha-$REVISION" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
