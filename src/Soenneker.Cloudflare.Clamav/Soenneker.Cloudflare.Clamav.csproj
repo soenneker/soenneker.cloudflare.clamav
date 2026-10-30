@@ -5,8 +5,12 @@
         <Features>$(Features);runtime-async=on</Features>
         <IsAotCompatible>true</IsAotCompatible>
         <Nullable>enable</Nullable>
+        <NuGetAuditMode>all</NuGetAuditMode>
+        <NuGetAuditLevel>high</NuGetAuditLevel>
+        <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
         <PublishAot>true</PublishAot>
         <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+        <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
         <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>$(NoWarn);1591</NoWarn>
@@ -22,13 +26,19 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="11.0.0-rc.3.26522.148" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="11.0.0-rc.3.26522.148" PrivateAssets="all" />
-        <PackageReference Include="Soenneker.Clamav.Util" Version="11.0.135" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="11.0.65" />
-        <PackageReference Include="Soenneker.Librarian.R2" Version="11.0.141" />
-        <PackageReference Include="Soenneker.Utils.BackgroundQueue" Version="11.0.2547" />
-        <PackageReference Include="Soenneker.Utils.File" Version="11.0.2329" />
-        <PackageReference Include="Soenneker.Utils.Json" Version="11.0.2770" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="11.0.1266" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Soenneker.Clamav.Definitions" Version="11.0.119" />
+        <PackageReference Include="Soenneker.Clamav.Linux" Version="4.0.4" />
+        <PackageReference Include="Soenneker.Clamav.Windows" Version="4.0.2" />
+        <PackageReference Include="Soenneker.Clamav.Freshclam.Linux" Version="4.0.6" />
+        <PackageReference Include="Soenneker.Clamav.Freshclam.Windows" Version="4.0.4" />
+        <PackageReference Include="Soenneker.Asyncs.Semaphores" Version="11.0.36" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.1" />
     </ItemGroup>
 
     <Target Name="RemoveWindowsScannerAssetsFromLinuxPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">

@@ -47,7 +47,7 @@ public static class ScannerOpenApi
                      !concrete.Content.TryGetValue("application/problem+json", out mediaType)))
                     continue;
 
-                string contentType = response.Key is "401" or "404" or "413" ? "application/problem+json" : "application/json";
+                string contentType = int.TryParse(response.Key, out int statusCode) && statusCode >= 400 && !(name == "Ready" && statusCode == 503) ? "application/problem+json" : "application/json";
                 concrete.Content = new Dictionary<string, IOpenApiMediaType> { [contentType] = mediaType };
                 if (response.Key == "401")
                 {
@@ -60,7 +60,7 @@ public static class ScannerOpenApi
             }
         }
 
-        if (name is nameof(ScannerEndpoints.Scan) or nameof(ScannerEndpoints.Queue))
+        if (name is nameof(ScannerEndpoints.Scan) or "Queue")
         {
             operation.RequestBody = new OpenApiRequestBody
             {
@@ -76,6 +76,18 @@ public static class ScannerOpenApi
             };
         }
 
+        if (name == "Queue")
+        {
+            operation.Parameters ??= [];
+            operation.Parameters.Add(new OpenApiParameter { Name = "Idempotency-Key", In = ParameterLocation.Header, Required = true,
+                Description = "Unique submission key, retained for seven days after completion. Reuse only with identical bytes.",
+                Schema = new OpenApiSchema { Type = JsonSchemaType.String, MaxLength = 128 } });
+            operation.Parameters.Add(new OpenApiParameter { Name = "X-Content-SHA256", In = ParameterLocation.Header, Required = true,
+                Description = "Lowercase SHA-256 of the raw upload. Storage verifies this checksum before acceptance.",
+                Schema = new OpenApiSchema { Type = JsonSchemaType.String, Pattern = "^[a-f0-9]{64}$" } });
+            operation.Parameters.Add(new OpenApiParameter { Name = "Content-Length", In = ParameterLocation.Header, Required = true,
+                Schema = new OpenApiSchema { Type = JsonSchemaType.Integer, Format = "int64" } });
+        }
         return Task.CompletedTask;
     }
 
@@ -87,6 +99,10 @@ public static class ScannerOpenApi
     private static Task TransformSchema(OpenApiSchema schema, OpenApiSchemaTransformerContext context,
         CancellationToken cancellationToken)
     {
+        if (context.JsonTypeInfo.Type == typeof(VirusScanResponse) && schema.Properties is not null &&
+            schema.Properties.TryGetValue("verdict", out IOpenApiSchema? verdict) && verdict is OpenApiSchema verdictSchema)
+            verdictSchema.Enum = [JsonValue.Create(ScanVerdict.Clean.Value), JsonValue.Create(ScanVerdict.Infected.Value),
+                JsonValue.Create(ScanVerdict.Inconclusive.Value), JsonValue.Create(ScanVerdict.Error.Value)];
         bool isJob = context.JsonTypeInfo.Type == typeof(VirusScanJobResponse);
         bool isAccepted = context.JsonTypeInfo.Type == typeof(VirusScanJobAcceptedResponse);
         if ((!isJob && !isAccepted) || schema.Properties is null)
@@ -97,7 +113,7 @@ public static class ScannerOpenApi
 
         if (schema.Properties.TryGetValue("status", out IOpenApiSchema? status) && status is OpenApiSchema statusSchema)
         {
-            statusSchema.Enum = isAccepted ? [JsonValue.Create(VirusScanJobStatus.Queued.Value)] :
+            statusSchema.Enum =
             [
                 JsonValue.Create(VirusScanJobStatus.Queued.Value),
                 JsonValue.Create(VirusScanJobStatus.Processing.Value),
@@ -121,7 +137,7 @@ public static class ScannerOpenApi
         {
             Title = "Soenneker.Cloudflare.Clamav",
             Version = "v1",
-            Description = "ClamAV file scanning with Cloudflare Containers and R2 job storage. Supply your deployment URL as the API base address."
+            Description = "ClamAV file scanning with Cloudflare Containers, private R2 uploads, D1 job state, and Queues delivery. Supply your deployment URL as the API base address."
         };
         document.Servers = [new OpenApiServer { Url = "/" }];
         document.Components ??= new OpenApiComponents();

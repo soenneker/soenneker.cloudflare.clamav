@@ -1,275 +1,130 @@
 # Soenneker.Cloudflare.Clamav
 
-**ClamAV file scanning for your applications, packaged as a Docker container and ready to run behind a Cloudflare Worker.**
+A native-AOT ClamAV scanning container with a durable Cloudflare Worker API. The container supervises ClamAV and FreshClam; the Worker coordinates private R2 uploads, D1 job records, and retryable Queues delivery.
 
-Scan uploads, attachments, and documents through a simple HTTP API hosted in your own Cloudflare account. Configure four values, deploy the container, and start submitting files. Choose synchronous scan results or background jobs with status and results stored in R2.
+## Scan guarantees
 
-For .NET applications, pair the scanner with [Soenneker.Cloudflare.Clamav.OpenApiClientUtil](https://github.com/soenneker/soenneker.cloudflare.clamav.openapiclientutil). It provides a cached, typed OpenAPI client with dependency injection and bearer authentication configured for you.
+- `clean` means ClamAV completed inspection under the configured policy with no detection. Antivirus scanning is one security control, not a guarantee that a file is harmless.
+- `infected` identifies a detected signature. `inconclusive` identifies encrypted content, archive limits, or broken formats flagged by the engine. `error` identifies an engine failure. Only `clean` sets `clean: true`.
+- Results include a scan ID, SHA-256, byte count, engine version, loaded signature version/date, and elapsed time. The Worker verifies results against the persisted upload checksum and size.
+- Limits cover HTTP bytes, aggregate upload reservations, concurrent scans, upload duration, scan duration, expanded archive bytes, nested files, and recursion.
+- Readiness requires a responding daemon and loaded signatures no more than three days old. Startup seeds the writable database from packaged definitions, refreshes it with FreshClam, and starts the daemon. Updates drain active scans and restart the daemon to confirm the loaded database. Update failures retain usable signatures; stale signatures prevent scanning.
+- Durable submission returns `202` only after upload and job persistence. Delivery is at least once; leases and conditional completion prevent an obsolete attempt from overwriting a newer one. No in-memory queue or container-local upload is required for recovery.
 
-[Docker Hub](https://hub.docker.com/r/soenneker/cloudflare-clamav) · [.NET client utility on NuGet](https://www.nuget.org/packages/Soenneker.Cloudflare.Clamav.OpenApiClientUtil/) · [OpenAPI specification](https://github.com/soenneker/soenneker.cloudflare.clamav.openapi)
+## Deploy the Worker
 
-## Why use it?
+The reusable deployment is in `worker/`. It requires a private R2 bucket, D1 database, scan queue, dead-letter queue, and a scanner API key of at least 32 characters. Container instances receive only the scanner key, not account-wide Cloudflare credentials. Cloudflare request/response operation logging remains enabled.
 
-- **Deploy the image.** Run ClamAV on Cloudflare Containers or locally without installing the scanner on your application server.
-- **Keep integration simple.** Send file bytes over HTTP or use the typed .NET client.
-- **Choose your scan flow.** Wait for a verdict or submit a background job and poll for its result.
-- **Definition updates built in.** The first scan initializes definitions through `Soenneker.Clamav.Util`, and a background service refreshes them hourly for long-running containers.
-- **Run in your own account.** Your Cloudflare deployment hosts the scanner and its R2 job records.
-
-## How it works
-
-```text
-Your application / .NET OpenAPI client
-                 |
-                 v
-        Cloudflare Worker
-                 |
-                 v
-    Docker container running ClamAV
-                 |
-                 v
-      R2: job status and results
-```
-
-The Worker forwards requests to the container, which validates the scanner bearer token and scans uploaded bytes. Files are written to temporary storage and deleted after processing. R2 stores background job records, not uploaded files.
-
-## Deploy on Cloudflare
-
-You need a Cloudflare account with Containers enabled, an R2 bucket, and a Cloudflare API token with permission to read and write that bucket's objects through the Cloudflare API. R2 configuration is required for both synchronous and background scans.
-
-### 1. Create your Worker
-
-Start with the [Cloudflare Containers template](https://developers.cloudflare.com/containers/get-started/). Choose a project directory such as `clamav-worker` and skip its initial deployment so you can configure the scanner first:
+From `worker/`:
 
 ```sh
-npm create cloudflare@latest -- --template=cloudflare/templates/containers-template
-cd clamav-worker
-```
-
-This repository supplies the scanner image. The Worker examples below belong in your own deployment project.
-
-### 2. Set the image and configuration
-
-Replace the new project's `wrangler.jsonc` with this configuration, supplying your account ID and bucket name:
-
-```jsonc
-{
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "clamav-worker",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-09-22",
-  "workers_dev": true,
-  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
-  "vars": {
-    "CLOUDFLARE_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID",
-    "SCANNER_R2_BUCKET": "YOUR_R2_BUCKET"
-  },
-  "containers": [{
-    "class_name": "ClamavContainer",
-    "image": "docker.io/soenneker/cloudflare-clamav:latest",
-    "instance_type": "standard-1",
-    "max_instances": 1
-  }],
-  "durable_objects": {
-    "bindings": [{ "name": "CLAMAV", "class_name": "ClamavContainer" }]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ClamavContainer"] }]
-}
-```
-
-Cloudflare supports [public Docker Hub images directly](https://developers.cloudflare.com/containers/guides/image-management/), so you do not need to build the scanner to use a published image. Pin a published version or digest for repeatable deployments.
-
-Store the two sensitive values as Worker secrets:
-
-```sh
+npm ci
+npx wrangler r2 bucket create scanner-uploads
+npx wrangler d1 create scanner-jobs
+npx wrangler queues create scanner-scans
+npx wrangler queues create scanner-scans-dead
 npx wrangler secret put SCANNER_API_KEY
-npx wrangler secret put CLOUDFLARE_API_TOKEN
 ```
 
-Choose a strong scanner API key and use that same value in your calling application. The Cloudflare API token is a separate credential used by the container to access R2.
-
-| Worker setting | Container environment variable | Purpose |
-| --- | --- | --- |
-| `SCANNER_API_KEY` (secret) | `Scanner__ApiKey` | Authenticates scan and job requests |
-| `SCANNER_R2_BUCKET` | `Librarian__R2__BucketName` | R2 bucket for job records |
-| `CLOUDFLARE_ACCOUNT_ID` | `Librarian__R2__AccountId` | Account containing the R2 bucket |
-| `CLOUDFLARE_API_TOKEN` (secret) | `Cloudflare__ApiKey` | Cloudflare API access for R2 |
-
-### 3. Connect the Worker to the container
-
-Replace `src/index.ts` in your Worker project:
-
-```typescript
-import { Container, getContainer } from "@cloudflare/containers";
-
-interface Env {
-  CLAMAV: DurableObjectNamespace<ClamavContainer>;
-  SCANNER_API_KEY: string;
-  SCANNER_R2_BUCKET: string;
-  CLOUDFLARE_ACCOUNT_ID: string;
-  CLOUDFLARE_API_TOKEN: string;
-}
-
-export class ClamavContainer extends Container<Env> {
-  defaultPort = 8080;
-  sleepAfter = "30m";
-  enableInternet = true;
-
-  envVars = {
-    Scanner__ApiKey: this.env.SCANNER_API_KEY,
-    Librarian__R2__BucketName: this.env.SCANNER_R2_BUCKET,
-    Librarian__R2__AccountId: this.env.CLOUDFLARE_ACCOUNT_ID,
-    Cloudflare__ApiKey: this.env.CLOUDFLARE_API_TOKEN,
-  };
-}
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    return getContainer(env.CLAMAV, "scanner").fetch(request);
-  },
-};
-```
-
-Worker variables and secrets must be [passed into the container through `envVars`](https://developers.cloudflare.com/containers/examples/env-vars-and-secrets/). Double underscores in the container variable names map to .NET configuration sections.
-
-This example routes requests to one named instance. Its 30-minute idle sleep setting is a starting point; account for background queue duration when choosing lifecycle settings.
-
-### 4. Deploy and scan
+Set the returned database ID in `wrangler.jsonc`, and configure a route/custom domain. `workers_dev` is disabled by default. Use separate bindings, queues, databases, and secrets for each environment. Keep the R2 bucket private: do not enable public access or attach a public custom domain.
 
 ```sh
-npx wrangler deploy
+npm run migrate
+npm run typecheck
+npm test
+npm run deploy
 ```
 
-Allow time for initial container provisioning, then use the Worker URL printed by Wrangler. Set `SCANNER_API_KEY` in your shell to the secret you created:
-
-```sh
-curl --fail-with-body https://clamav-worker.YOUR_SUBDOMAIN.workers.dev/scan \
-  -H "Authorization: Bearer $SCANNER_API_KEY" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @file-to-scan
-```
-
-A clean scan returns:
-
-```json
-{ "clean": true, "threat": null, "engine": "ClamAV" }
-```
-
-## Use it from .NET
-
-[Soenneker.Cloudflare.Clamav.OpenApiClientUtil](https://github.com/soenneker/soenneker.cloudflare.clamav.openapiclientutil) handles client creation, caching, and bearer authentication so your application can focus on the scan result.
-
-```sh
-dotnet add package Soenneker.Cloudflare.Clamav.OpenApiClientUtil
-```
-
-Configure your application's endpoint in `appsettings.json`:
-
-```json
-{
-  "Scanner": {
-    "BaseUrl": "https://clamav-worker.YOUR_SUBDOMAIN.workers.dev/"
-  }
-}
-```
-
-Supply `Scanner:ApiKey` through your application's secret configuration, or set the environment variable `Scanner__ApiKey`. Use the same scanner key configured in the Worker; your application does not need the container's Cloudflare API token.
-
-Register the utility with dependency injection:
-
-```csharp
-using Soenneker.Cloudflare.Clamav.OpenApiClientUtil.Registrars;
-
-builder.Services.AddCloudflareClamavOpenApiClientUtilAsSingleton();
-```
-
-Inject `ICloudflareClamavOpenApiClientUtil` and scan a file:
-
-```csharp
-using Soenneker.Cloudflare.Clamav.OpenApiClientUtil.Abstract;
-
-public sealed class UploadScanner(ICloudflareClamavOpenApiClientUtil clientUtil)
-{
-    public async Task<bool> IsClean(Stream file, CancellationToken cancellationToken = default)
-    {
-        var client = await clientUtil.Get(cancellationToken);
-        var result = await client.Scan.PostAsync(file, cancellationToken: cancellationToken);
-        return result?.Clean == true;
-    }
-}
-```
-
-For background scans, submit the stream and retrieve the job on subsequent polls:
-
-```csharp
-var client = await clientUtil.Get(cancellationToken);
-var accepted = await client.Scan.Jobs.PostAsync(file, cancellationToken: cancellationToken);
-
-if (accepted?.Id is not { } jobId)
-    throw new InvalidOperationException("The scanner did not return a job ID.");
-
-var job = await client.Scan.Jobs[jobId].GetAsync(cancellationToken: cancellationToken);
-// Poll until status is "completed" or "failed"; read Result after completion.
-```
+The checked-in deployment builds `../Dockerfile`. For releases, replace the image with `docker.io/soenneker/cloudflare-clamav@sha256:<verified-digest>`. Verify the image signature and provenance before promotion. The deployment defaults to one 4-GiB container and two queue consumers; job state supports multiple container instances, but routing and `max_instances` must be increased together when scaling.
 
 ## HTTP API
 
-Upload raw file bytes with `Content-Type: application/octet-stream`, rather than multipart form data. All scan and job endpoints require `Authorization: Bearer YOUR_SCANNER_API_KEY`.
+Use `Authorization: Bearer <SCANNER_API_KEY>` for all routes except `/health`. Upload raw `application/octet-stream` bytes, not multipart form data. Responses are never cacheable.
 
-| Method | Route | Response |
+| Method | Route | Behavior |
 | --- | --- | --- |
-| `GET` | `/health` | ClamAV version readiness check; no authentication required |
-| `POST` | `/scan` | Scan verdict with `clean`, `threat`, and `engine` |
-| `POST` | `/scan/jobs` | HTTP 202 with `id`, `status`, and `statusUrl` |
-| `GET` | `/scan/jobs/{id}` | Persisted job status and result |
+| GET | `/health` | HTTP host liveness; does not assert scanner readiness |
+| GET | `/ready` | Authenticated daemon and signature readiness; 503 while unavailable |
+| POST | `/scan` | Synchronous verdict; 429 when admission is full, 503 while unavailable |
+| POST | `/scan/jobs` | Durable submission through the Worker; 202 with a relative polling URL |
+| GET | `/scan/jobs/{id}` | Durable job state and result through the Worker |
 
-Job states are `queued`, `processing`, `completed`, and `failed`. A completed job means scanning finished; inspect its result to determine whether the file was clean.
-
-The [OpenAPI 3.1 document](https://raw.githubusercontent.com/soenneker/soenneker.cloudflare.clamav.openapi/main/openapi.json) describes the API for client generation and integrations.
-
-## Run locally with Docker
-
-Create a local `scanner.env` file and keep it out of source control:
-
-```dotenv
-Scanner__ApiKey=YOUR_SCANNER_API_KEY
-Librarian__R2__BucketName=YOUR_R2_BUCKET
-Librarian__R2__AccountId=YOUR_CLOUDFLARE_ACCOUNT_ID
-Cloudflare__ApiKey=YOUR_CLOUDFLARE_API_TOKEN
-```
-
-Run the Linux amd64 image:
+A standalone container serves liveness, readiness, and synchronous scans. Its job routes return 501 and direct callers to the Worker.
 
 ```sh
-docker run --rm --platform linux/amd64 -p 8080:8080 \
-  --env-file scanner.env soenneker/cloudflare-clamav:latest
+curl --fail-with-body https://YOUR_SCANNER/scan \
+  -H "Authorization: Bearer $SCANNER_API_KEY" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @document.pdf
 ```
 
-Use `http://localhost:8080/` as your client's `Scanner:BaseUrl`, or send the same curl request to `http://localhost:8080/scan`. Local execution still requires the R2 configuration above.
-
-To build the image yourself, run this from the repository root and substitute the resulting image name in `docker run`:
+For a background job, supply `Content-Length`, `Idempotency-Key` (1–128 printable ASCII characters), and `X-Content-SHA256` (64 lowercase hexadecimal characters). Calculate the checksum over the exact uploaded bytes. R2 validates it before acceptance. Reusing a key with different checksum or size returns 409; retrying an accepted submission returns its existing job ID and current status. Retain the same key across network retries.
 
 ```sh
-docker build --platform linux/amd64 -t soenneker-cloudflare-clamav .
+checksum=$(sha256sum document.pdf | cut -d ' ' -f 1)
+curl --fail-with-body https://YOUR_SCANNER/scan/jobs \
+  -H "Authorization: Bearer $SCANNER_API_KEY" \
+  -H "Content-Type: application/octet-stream" \
+  -H "Idempotency-Key: YOUR_UNIQUE_SUBMISSION_ID" \
+  -H "X-Content-SHA256: $checksum" \
+  --data-binary @document.pdf
 ```
 
-## Runtime details
+Poll the returned `statusUrl` until `completed` or `failed`. A completed job can be infected or inconclusive: inspect `result.verdict` and `result.clean`. Honor `Retry-After` on admission failures and polling responses. The generated .NET client can supply these headers through its request configuration callback.
 
-- The default upload limit is **100 MiB**. Set `Scanner__MaximumFileSize` in the container environment to override it in bytes; upstream request limits still apply.
-- Each ClamAV scan has a **10-minute timeout**. Use background jobs when waiting on a single HTTP request is unsuitable.
-- The container needs outbound network access for R2 and definition updates, plus writable temporary and ClamAV working directories. First requests may take longer while the container starts and definitions initialize.
-- Definition refreshes run on a `PeriodicTimer`, starting one interval after application startup. The default interval is one hour; override `Scanner:DefinitionUpdateInterval` with a positive `TimeSpan`, for example container environment variable `Scanner__DefinitionUpdateInterval=02:00:00` for two hours. Updates run sequentially, failures are logged and retried on the next tick, and shutdown cancels the updater.
-- The running ClamAV daemon checks local database files every ten minutes and reloads changed definitions. This check does not download definitions, so newly downloaded signatures may take up to that check interval, plus reload time, to become active. Engine upgrades require an updated container image and redeployment.
-- Job records use a single Librarian R2 snapshot at `scanner/jobs.json`; override it with `Librarian__R2__ObjectKey`. Only one scanner instance may own each snapshot. Every job update persists the complete snapshot before returning. Legacy `scanner/jobs/{id}.json` objects are not imported automatically.
-- **Background jobs are not a durable queue.** R2 preserves job records, but uploads and pending work remain inside the container. Container termination loses unfinished work, with no automatic retry; its persisted status can remain queued or processing.
-- `/health` checks ClamAV version availability. It does not verify R2 access or definition freshness.
+## Durability, capacity, and retention
 
-## OpenAPI generation
+D1 reserves admission atomically before upload: at most eight uploads, 100 unfinished jobs, and 10 GiB of retained payloads. An upload has a two-minute deadline. Background jobs have a 24-hour lifetime, at most three processing attempts, and a twelve-minute processing lease. Only the active lease holder may commit a result. A one-minute scheduled sweep redispatches ready work, recovers expired leases, fails exhausted jobs, and retries payload cleanup. Duplicate queue delivery is expected and safe.
 
-Generate the contract locally from controller routes, response types, and XML documentation without starting a webserver or configuring Cloudflare credentials:
+Terminal payloads are deleted promptly, and terminal job records/idempotency keys expire seven days after completion. Interrupted uploads expire after ten minutes. Configure an R2 lifecycle rule expiring payload objects after two days as a final cleanup backstop; this is longer than the maximum job lifetime. Keep Cron Triggers enabled. Investigate dead-letter messages and `recovery`/`scan_attempt_failed` events rather than treating a dead-letter queue as completed work.
+
+The Worker schema is created by versioned D1 migrations. Apply migrations before deploying a new Worker. No import from older snapshot-based storage is performed. Roll back the Worker and container by verified image digest only to a schema-compatible version.
+
+## Run the container locally
 
 ```sh
-dotnet build src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.csproj --configuration Release -p:OpenApiGenerateDocuments=true
+docker build --platform linux/amd64 -t soenneker-cloudflare-clamav:test .
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -e Scanner__ApiKey="$SCANNER_API_KEY" \
+  --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+  --memory=4g --cpus=2 \
+  --tmpfs /data:rw,noexec,nosuid,size=2g,uid=1654,gid=1654 \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  soenneker-cloudflare-clamav:test
 ```
 
-The output is `artifacts/openapi/openapi.json`. The `publish-openapi` workflow publishes contract changes to [soenneker.cloudflare.clamav.openapi](https://github.com/soenneker/soenneker.cloudflare.clamav.openapi).
+The image runs as UID 1654. `/data` holds writable definitions, configuration, scan scratch space, and temporary uploads. Application binaries remain read-only. Allow outbound access to the official ClamAV definition service. A persistent `/data` volume can reduce cold-start downloads; never share it between running containers. The packaged native binaries support Linux amd64; the source host also supports Windows x64 for development.
+
+| Container setting | Default |
+| --- | --- |
+| `Scanner__MaximumFileSize` | 104857600 bytes (100 MiB maximum) |
+| `Scanner__MaximumConcurrentScans` | 2 |
+| `Scanner__TemporaryByteBudget` | 268435456 bytes of upload reservations |
+| `Scanner__UploadTimeout` | `00:02:00` |
+| `Scanner__ScanTimeout` | `00:05:00` |
+| `Scanner__MaximumExpandedSize` | 268435456 bytes per scan |
+| `Scanner__MaximumArchiveFiles` | 10000 |
+| `Scanner__MaximumRecursion` | 16 |
+| `Scanner__DefinitionUpdateInterval` | `01:00:00` |
+| `Scanner__MaximumDefinitionAge` | `3.00:00:00` |
+
+The upload reservation budget excludes database memory and archive extraction scratch space; size the container memory and writable filesystem for all three. Settings are validated. The Worker verifies freshness within three days, so increasing the container threshold does not relax durable-job policy.
+
+## Observability and verification
+
+Structured logs include scan IDs, verdict/reason, sizes, durations, attempts, queue age, recovery, update failures, and Cloudflare operation request/response metadata. They do not include raw uploaded file bytes. Keep Cloudflare request/response logging enabled in all environments.
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces and metrics using standard OpenTelemetry settings. The meter `Soenneker.Cloudflare.Clamav` emits scan outcomes, latency, active reservations, reserved bytes, admission rejections, definition-update failures, readiness, and loaded signature age. A signature-age value of -1 means the loaded version is not known. Alert on sustained readiness loss, age approaching three days, oldest queued age, failed attempts, admission saturation, and dead-letter queue growth. Worker logs provide queue/recovery metrics; configure Cloudflare alerts for queue backlog, dead-letter messages, and Cron Trigger failures.
+
+```sh
+dotnet test --project test/Soenneker.Cloudflare.Clamav.Tests
+dotnet build src/Soenneker.Cloudflare.Clamav -p:OpenApiGenerateDocuments=true
+npm --prefix worker run typecheck
+npm --prefix worker test
+python -m pip install -r scripts/requirements-test.txt
+python scripts/container-smoke.py soenneker-cloudflare-clamav:test
+# Linux/macOS with Docker and Node:
+python scripts/worker-smoke.py
+```
+
+OpenAPI generation uses the real route metadata without starting native scanner processes. The contract is written to `artifacts/openapi/openapi.json`. CI tests real local D1/R2 behavior and the final image with clean/EICAR files, encrypted/nested archives, upload limits, cleanup, and daemon recovery. Image publication requires these checks, high/critical vulnerability gates, an SBOM, a keyless signature, and build provenance before promoting release tags. Vulnerability scanners do not establish the absence of vulnerabilities in native bundled binaries; keep the ClamAV distribution packages and pinned base images current.

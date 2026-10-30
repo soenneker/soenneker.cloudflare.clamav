@@ -1,217 +1,120 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
-using Soenneker.Cloudflare.Clamav.Stores;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Configuration;
-using Soenneker.Cloudflare.Clamav.Managers.Abstract;
+using Microsoft.Extensions.Logging;
+using Soenneker.Cloudflare.Clamav.Options;
 using Soenneker.Cloudflare.Clamav.Responses;
-using Soenneker.Utils.File.Abstract;
-using Soenneker.Utils.Path.Abstract;
-
+using Soenneker.Cloudflare.Clamav.Services;
+using Soenneker.Cloudflare.Clamav.Services.Abstract;
 namespace Soenneker.Cloudflare.Clamav.Endpoints;
 
-/// <summary>
-/// Exposes ClamAV readiness, authenticated file scanning, and background job retrieval over HTTP.
-/// </summary>
-/// <remarks>
-/// Upload endpoints accept raw request bytes rather than multipart form data. Scan and job endpoints
-/// require the configured scanner API key as a bearer token; the health endpoint is unauthenticated.
-/// </remarks>
-public sealed class ScannerEndpoints
+/// <summary>Exposes liveness, authenticated readiness, and bounded synchronous scanning.</summary>
+public sealed class ScannerEndpoints(ScannerOptions options, IScanEngine engine, ScanAdmission admission, ILogger<ScannerEndpoints> logger)
 {
-    /// <summary>Maps the scanner HTTP contract using generated Minimal API request delegates.</summary>
-    /// <param name="endpoints">The application's endpoint route builder.</param>
     public static void Map(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/health", (ScannerEndpoints scanner, CancellationToken token) => scanner.Health(token))
-            .WithName(nameof(Health)).WithSummary("Queries ClamAV readiness.")
-            .Produces<HealthResponse>().Produces<HealthResponse>(StatusCodes.Status503ServiceUnavailable);
-        endpoints.MapPost("/scan", (ScannerEndpoints scanner, HttpRequest request, CancellationToken token) => scanner.Scan(request, token))
-            .WithName(nameof(Scan)).WithSummary("Accepts a raw file upload and waits for its scan verdict.")
-            .Produces<VirusScanResponse>().ProducesProblem(401).ProducesProblem(413);
-        endpoints.MapPost("/scan/jobs", (ScannerEndpoints scanner, HttpRequest request, CancellationToken token) => scanner.Queue(request, token))
-            .WithName(nameof(Queue)).WithSummary("Accepts a raw file upload for background scanning.")
-            .Produces<VirusScanJobAcceptedResponse>(202).ProducesProblem(401).ProducesProblem(413);
-        endpoints.MapGet("/scan/jobs/{jobId}", (ScannerEndpoints scanner, HttpRequest request, string jobId, CancellationToken token) => scanner.GetJob(request, jobId, token))
-            .WithName(nameof(GetJob)).WithSummary("Retrieves the latest persisted state of a background scan.")
-            .Produces<VirusScanJobResponse>().ProducesProblem(401).ProducesProblem(404);
+        endpoints.MapGet("/health", () => TypedResults.Ok(new HealthResponse(true)))
+            .WithName("Health").WithSummary("Checks HTTP host liveness.");
+        endpoints.MapGet("/ready", (ScannerEndpoints handler, HttpContext context) => handler.Ready(context))
+            .WithName("Ready").WithSummary("Checks the daemon and loaded signature freshness.").Produces<HealthResponse>().Produces<HealthResponse>(503).ProducesProblem(401);
+        endpoints.MapPost("/scan", (ScannerEndpoints handler, HttpContext context) => handler.Scan(context))
+            .WithName(nameof(Scan)).WithSummary("Inspects raw file bytes under bounded resource limits.")
+            .Produces<VirusScanResponse>().ProducesProblem(401).ProducesProblem(408).ProducesProblem(413).ProducesProblem(429).ProducesProblem(503);
+        // Contract metadata for the public Worker. Durable jobs are deliberately not accepted by a standalone container.
+        endpoints.MapPost("/scan/jobs", () => TypedResults.Problem(statusCode: 501, title: "Use the Cloudflare Worker for durable jobs."))
+            .WithName("Queue").WithSummary("Accepts a durable scan through the Worker; requires Idempotency-Key.")
+            .Produces<VirusScanJobAcceptedResponse>(202).ProducesProblem(400).ProducesProblem(401).ProducesProblem(409).ProducesProblem(413).ProducesProblem(429).ProducesProblem(501);
+        endpoints.MapGet("/scan/jobs/{jobId}", (string jobId) => TypedResults.Problem(statusCode: 501, title: "Use the Cloudflare Worker for durable jobs."))
+            .WithName("GetJob").WithSummary("Retrieves durable job state through the Worker.")
+            .Produces<VirusScanJobResponse>().ProducesProblem(401).ProducesProblem(404).ProducesProblem(501);
     }
 
-    private const long _defaultMaximumFileSize = 100 * 1024 * 1024;
-    private const string _bearerPrefix = "Bearer ";
-
-    private readonly IScannerManager _scannerManager;
-    private readonly IFileUtil _fileUtil;
-    private readonly IPathUtil _pathUtil;
-    private readonly long _maximumFileSize;
-    private readonly string? _apiKey;
-
-    /// <summary>
-    /// Initializes the endpoint handler with its scan pipeline, temporary-file utilities, and request settings.
-    /// </summary>
-    /// <param name="scannerManager">The pipeline that takes ownership of uploaded files and executes scans.</param>
-    /// <param name="fileUtil">The utility used to write and clean up temporary uploads.</param>
-    /// <param name="pathUtil">The utility used to allocate temporary upload paths.</param>
-    /// <param name="configuration">Provides <c>Scanner:ApiKey</c> and the optional <c>Scanner:MaximumFileSize</c> limit in bytes.</param>
-    public ScannerEndpoints(IScannerManager scannerManager, IFileUtil fileUtil, IPathUtil pathUtil, IConfiguration configuration)
+    private bool Authorized(HttpContext context)
     {
-        _scannerManager = scannerManager;
-        _fileUtil = fileUtil;
-        _pathUtil = pathUtil;
-        _maximumFileSize = configuration.GetValue("Scanner:MaximumFileSize", _defaultMaximumFileSize);
-        _apiKey = configuration["Scanner:ApiKey"];
+        string supplied = context.Request.Headers.Authorization.ToString();
+        return options.ApiKey.Length >= 32 && CryptographicOperations.FixedTimeEquals(
+            SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), SHA256.HashData(Encoding.UTF8.GetBytes("Bearer " + options.ApiKey)));
     }
 
-    /// <summary>
-    /// Queries ClamAV for its version to check scanner readiness.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels the version query.</param>
-    /// <returns>HTTP 200 when version text is available, or HTTP 503 when it is empty.</returns>
-    /// <remarks>This check does not verify R2 access or definition freshness. Version-query exceptions propagate.</remarks>
-    public async ValueTask<IResult> Health(CancellationToken cancellationToken)
+    public async Task<IResult> Ready(HttpContext context)
     {
-        string version = await _scannerManager.GetVersion(cancellationToken);
-        bool ready = !string.IsNullOrWhiteSpace(version);
-
-        return ready
-            ? TypedResults.Ok(new HealthResponse(true))
-            : TypedResults.Json(new HealthResponse(false), LibraryJsonContext.Default.HealthResponse, statusCode: StatusCodes.Status503ServiceUnavailable);
+        context.Response.Headers.CacheControl = "no-store";
+        if (!Authorized(context)) return TypedResults.Problem(statusCode: 401);
+        HealthResponse health = await engine.Health(context.RequestAborted);
+        return TypedResults.Json(health, Soenneker.Cloudflare.Clamav.Stores.LibraryJsonContext.Default.HealthResponse, statusCode: health.Ready ? 200 : 503);
     }
 
-    /// <summary>
-    /// Accepts a raw file upload and waits for its scan verdict.
-    /// </summary>
-    /// <param name="request">The incoming HTTP request.</param>
-    /// <param name="cancellationToken">Cancels upload handling, enqueueing, or waiting for the verdict.</param>
-    /// <returns>HTTP 200 with the verdict, HTTP 401 for failed authentication, or HTTP 413 for an oversized upload.</returns>
-    /// <remarks>
-    /// The request body is written to a temporary file before ownership transfers to the scan pipeline.
-    /// Disconnecting after enqueueing does not cancel the queued scan. Scan failures propagate to the HTTP pipeline.
-    /// </remarks>
-    public async ValueTask<IResult> Scan(HttpRequest request, CancellationToken cancellationToken)
+    public async Task<IResult> Scan(HttpContext context)
     {
-        if (!IsAuthorized(request.Headers.Authorization.ToString()))
-            return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized);
-
-        if (request.ContentLength.HasValue && request.ContentLength.Value > _maximumFileSize)
+        context.Response.Headers.CacheControl = "no-store";
+        if (!Authorized(context)) return TypedResults.Problem(statusCode: 401);
+        if (context.Request.ContentLength > options.MaximumFileSize) return TypedResults.Problem(statusCode: 413, title: "Upload exceeds the scan limit.");
+        if (!admission.TryAcquire())
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status413PayloadTooLarge,
-                title: "File is too large",
-                detail: $"The maximum scan size is {_maximumFileSize} bytes.");
+            context.Response.Headers.RetryAfter = "5";
+            return TypedResults.Problem(statusCode: 429, title: "Scanner capacity is reserved. Retry later.");
         }
-
-        string? temporaryPath = await WriteRequestToTemporaryFile(request, cancellationToken);
-
+        string scanId = Guid.NewGuid().ToString();
+        string? path = null;
+        using Activity? activity = ScanTelemetry.Activities.StartActivity("scan");
+        long started = Stopwatch.GetTimestamp();
         try
         {
-            string ownedPath = temporaryPath;
-            temporaryPath = null;
-            VirusScanResponse result = await _scannerManager.Scan(ownedPath, cancellationToken);
+            if (!(await engine.Health(context.RequestAborted)).Ready)
+                return TypedResults.Problem(statusCode: 503, title: "Scanner is warming up or signatures are stale.");
+            Directory.CreateDirectory(options.WorkingDirectory);
+            path = Path.Combine(options.WorkingDirectory, scanId + ".scan");
+            using var uploadTimeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+            uploadTimeout.CancelAfter(options.UploadTimeout);
+            using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            long size = 0;
+            await using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
+            {
+                byte[] buffer = new byte[65536];
+                int read;
+                while ((read = await context.Request.Body.ReadAsync(buffer, uploadTimeout.Token)) > 0)
+                {
+                    size += read;
+                    if (size > options.MaximumFileSize) return TypedResults.Problem(statusCode: 413, title: "Upload exceeds the scan limit.");
+                    hash.AppendData(buffer, 0, read);
+                    await file.WriteAsync(buffer.AsMemory(0, read), uploadTimeout.Token);
+                }
+            }
+            VirusScanResponse result = await engine.Scan(path, context.RequestAborted);
+            result = result with { ScanId = scanId, Sha256 = Convert.ToHexStringLower(hash.GetHashAndReset()), Size = size,
+                DurationMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds };
+            ScanTelemetry.Completed.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("verdict", result.Verdict));
+            logger.LogInformation("Scan {ScanId} completed: {Verdict}, {Reason}, {Bytes} bytes, {DurationMs} ms, signatures {Signatures}",
+                scanId, result.Verdict, result.Reason, size, result.DurationMilliseconds, result.SignatureVersion);
             return TypedResults.Ok(result);
         }
-        finally
+        catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
         {
-            if (temporaryPath is not null)
-                await _fileUtil.TryDelete(temporaryPath, log: false, CancellationToken.None);
+            return TypedResults.Problem(statusCode: 408, title: "Upload or scan deadline exceeded.");
         }
-    }
-
-    /// <summary>
-    /// Accepts a raw file upload for background scanning and returns a polling location.
-    /// </summary>
-    /// <param name="request">The incoming HTTP request.</param>
-    /// <param name="cancellationToken">Cancels upload handling, initial job persistence, or enqueueing.</param>
-    /// <returns>HTTP 202 with the job identifier and status URL, HTTP 401 for failed authentication, or HTTP 413 for an oversized upload.</returns>
-    /// <remarks>Acceptance persists job metadata; uploaded files and pending work remain local to the container.</remarks>
-    public async ValueTask<IResult> Queue(HttpRequest request, CancellationToken cancellationToken)
-    {
-        if (!IsAuthorized(request.Headers.Authorization.ToString()))
-            return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized);
-
-        IResult? invalidRequest = ValidateFileSize(request);
-        if (invalidRequest is not null)
-            return invalidRequest;
-
-        string? temporaryPath = await WriteRequestToTemporaryFile(request, cancellationToken);
-
-        try
+        catch (BadHttpRequestException exception) when (exception.StatusCode == 413)
         {
-            string ownedPath = temporaryPath;
-            temporaryPath = null;
-            VirusScanJobResponse job = await _scannerManager.Queue(ownedPath, cancellationToken);
-            string statusUrl = $"{request.Scheme}://{request.Host}{request.PathBase}/scan/jobs/{job.Id}";
-            return TypedResults.Accepted(statusUrl, new VirusScanJobAcceptedResponse(job.Id, job.Status, statusUrl));
+            return TypedResults.Problem(statusCode: 413, title: "Upload exceeds the scan limit.");
+        }
+        catch (Exception exception) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogError(exception, "Scan {ScanId} failed", scanId);
+            return TypedResults.Problem(statusCode: 503, title: "The scan could not be completed.");
         }
         finally
         {
-            if (temporaryPath is not null)
-                await _fileUtil.TryDelete(temporaryPath, log: false, CancellationToken.None);
+            try { if (path is not null) File.Delete(path); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            { logger.LogError(exception, "Could not remove scan upload {ScanId}", scanId); }
+            finally { admission.Release(); }
+            ScanTelemetry.Duration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
-    }
-
-    /// <summary>
-    /// Retrieves the latest persisted state of a background scan.
-    /// </summary>
-    /// <param name="jobId">The job identifier in standard dashed GUID format.</param>
-    /// <param name="request">The incoming HTTP request.</param>
-    /// <param name="cancellationToken">Cancels retrieval from the job store.</param>
-    /// <returns>HTTP 200 with the record, HTTP 401 for failed authentication, or HTTP 404 for an invalid or missing identifier.</returns>
-    public async ValueTask<IResult> GetJob(HttpRequest request, string jobId, CancellationToken cancellationToken)
-    {
-        if (!IsAuthorized(request.Headers.Authorization.ToString()))
-            return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized);
-
-        if (!Guid.TryParseExact(jobId, "D", out _))
-            return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound);
-
-        VirusScanJobResponse? job = await _scannerManager.GetJob(jobId, cancellationToken);
-        return job is null ? TypedResults.Problem(statusCode: StatusCodes.Status404NotFound) : TypedResults.Ok(job);
-    }
-
-    /// <summary>Copies the raw request body into a newly allocated temporary scan file.</summary>
-    /// <param name="request">The incoming HTTP request.</param>
-    /// <param name="cancellationToken">Cancels path allocation or writing the upload.</param>
-    /// <returns>The temporary file path, whose ownership remains with the caller until transferred to the scan pipeline.</returns>
-    private async ValueTask<string> WriteRequestToTemporaryFile(HttpRequest request, CancellationToken cancellationToken)
-    {
-        string temporaryPath = await _pathUtil.GetRandomTempFilePath(".scan", cancellationToken);
-        await _fileUtil.Write(temporaryPath, request.Body, log: false, cancellationToken);
-        return temporaryPath;
-    }
-
-    /// <summary>Checks a declared content length against the configured upload limit.</summary>
-    /// <param name="request">The incoming HTTP request.</param>
-    /// <returns>An HTTP 413 problem result when oversized, otherwise <see langword="null"/>.</returns>
-    /// <remarks>Kestrel also enforces the request body limit, including uploads without a declared length.</remarks>
-    private IResult? ValidateFileSize(HttpRequest request)
-    {
-        if (!request.ContentLength.HasValue || request.ContentLength.Value <= _maximumFileSize)
-            return null;
-
-        return TypedResults.Problem(
-            statusCode: StatusCodes.Status413PayloadTooLarge,
-            title: "File is too large",
-            detail: $"The maximum scan size is {_maximumFileSize} bytes.");
-    }
-
-    /// <summary>Validates the bearer prefix and compares the supplied API key using a fixed-time byte comparison.</summary>
-    /// <param name="authorization">The complete Authorization header value.</param>
-    /// <returns>Whether the header contains the configured, nonempty scanner API key.</returns>
-    private bool IsAuthorized(string authorization)
-    {
-        if (string.IsNullOrWhiteSpace(_apiKey) || !authorization.StartsWith(_bearerPrefix, StringComparison.Ordinal))
-            return false;
-
-        string providedKey = authorization[_bearerPrefix.Length..];
-        byte[] expectedBytes = Encoding.UTF8.GetBytes(_apiKey);
-        byte[] providedBytes = Encoding.UTF8.GetBytes(providedKey);
-
-        return CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
     }
 }

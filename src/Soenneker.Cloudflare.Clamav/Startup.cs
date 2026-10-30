@@ -1,74 +1,57 @@
 using Microsoft.AspNetCore.Builder;
-using Soenneker.Cloudflare.Clamav.Endpoints;
-using System.Text.Json.Serialization;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Resources;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Soenneker.Clamav.Util.Registrars;
-using Soenneker.Librarian.R2.Registrars;
-using Soenneker.Utils.BackgroundQueue.Registrars;
-using Soenneker.Cloudflare.Clamav.Managers;
-using Soenneker.Cloudflare.Clamav.Managers.Abstract;
-using Soenneker.Cloudflare.Clamav.Stores;
-using Soenneker.Cloudflare.Clamav.Stores.Abstract;
+using Soenneker.Cloudflare.Clamav.Endpoints;
 using Soenneker.Cloudflare.Clamav.OpenApi;
+using Soenneker.Cloudflare.Clamav.Options;
 using Soenneker.Cloudflare.Clamav.Services;
+using Soenneker.Cloudflare.Clamav.Services.Abstract;
+using Soenneker.Cloudflare.Clamav.Stores;
 
 namespace Soenneker.Cloudflare.Clamav;
 
-/// <summary>
-/// Configures the application services and request pipeline.
-/// </summary>
-public sealed class Startup
+/// <summary>Configures the scanner container. The Worker owns durable job storage and delivery.</summary>
+public sealed class Startup(IConfiguration configuration)
 {
-    private const long DefaultMaximumFileSize = 100 * 1024 * 1024;
-
-    private readonly IConfiguration _configuration;
-
-    /// <summary>Initializes service startup with the host's configuration sources.</summary>
-    /// <param name="configuration">Configuration containing scanner limits and dependency settings.</param>
-    public Startup(IConfiguration configuration)
-    {
-        _configuration = configuration;
-    }
-
-    /// <summary>Registers endpoints, the ClamAV daemon utility, the background queue, and the R2 job store.</summary>
-    /// <param name="services">The host's service collection.</param>
-    /// <remarks>Also configures Kestrel's request body limit, defaulting to 100 MiB.</remarks>
     public void ConfigureServices(IServiceCollection services)
     {
-        long maximumFileSize = _configuration.GetValue("Scanner:MaximumFileSize", DefaultMaximumFileSize);
-
-        services.Configure<KestrelServerOptions>(options => options.Limits.MaxRequestBodySize = maximumFileSize);
-        services.AddClamavUtilAsSingleton(options =>
+        services.AddSingleton(_ => ScannerOptions.Read(configuration));
+        services.AddOptions<KestrelServerOptions>().Configure<ScannerOptions>((server, scanner) =>
         {
-            options.UseDaemon = true;
+            server.Limits.MaxRequestBodySize = scanner.MaximumFileSize;
+            server.Limits.MaxConcurrentConnections = 64;
+            server.AddServerHeader = false;
         });
-        services.AddR2LibrarianDatabaseAsSingleton();
-        services.AddHostedService<DefinitionUpdateService>();
-        services.AddBackgroundQueueAsSingleton();
-        services.AddSingleton<IScanJobStore, R2ScanJobStore>();
-        services.AddSingleton<IScannerManager, ScannerManager>();
+        services.AddSingleton<ClamdProtocol>();
+        services.AddSingleton<ScanAdmission>();
+        services.AddSingleton<ClamavEngine>();
+        services.AddSingleton<IScanEngine>(provider => provider.GetRequiredService<ClamavEngine>());
+        if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name != "GetDocument.Insider")
+            services.AddHostedService(provider => provider.GetRequiredService<ClamavEngine>());
         services.AddScoped<ScannerEndpoints>();
-        services.ConfigureHttpJsonOptions(options =>
-        {
-            options.SerializerOptions.TypeInfoResolverChain.Insert(0, LibraryJsonContext.Default);
-            options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
-        });
-
+        services.ConfigureHttpJsonOptions(options => options.SerializerOptions.TypeInfoResolverChain.Insert(0, LibraryJsonContext.Default));
         services.AddOpenApi("v1", ScannerOpenApi.Configure);
+        if (!string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+            services.AddOpenTelemetry()
+                .ConfigureResource(resource => resource.AddService("Soenneker.Cloudflare.Clamav"))
+                .WithMetrics(metrics => metrics.AddMeter("Soenneker.Cloudflare.Clamav").AddAspNetCoreInstrumentation().AddOtlpExporter())
+                .WithTracing(tracing => tracing.AddSource("Soenneker.Cloudflare.Clamav").AddAspNetCoreInstrumentation().AddOtlpExporter());
     }
 
-    /// <summary>Maps scanner routes and enables the developer exception page in Development.</summary>
-    /// <param name="app">The application request pipeline.</param>
-    /// <param name="environment">The hosting environment used to select exception-page behavior.</param>
     public void Configure(WebApplication app, IWebHostEnvironment environment)
     {
-        if (environment.IsDevelopment())
-            app.UseDeveloperExceptionPage();
-
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            await next(context);
+        });
         ScannerEndpoints.Map(app);
     }
 }

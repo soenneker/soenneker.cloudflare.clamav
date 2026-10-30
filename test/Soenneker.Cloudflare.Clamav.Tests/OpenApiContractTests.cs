@@ -20,10 +20,10 @@ public sealed class OpenApiContractTests
         var provider = scope.ServiceProvider.GetRequiredKeyedService<IOpenApiDocumentProvider>("v1");
         OpenApiDocument document = await provider.GetOpenApiDocumentAsync(cancellationToken: cancellationToken);
 
-        await Assert.That(document.Paths.Count).IsEqualTo(4);
+        await Assert.That(document.Paths.Count).IsEqualTo(5);
         OpenApiOperation health = document.Paths["/health"].Operations!.Values.Single();
         await Assert.That(health.Security!.Count).IsEqualTo(0);
-        await Assert.That(health.Responses!.ContainsKey("503")).IsTrue();
+        await Assert.That(document.Paths["/ready"].Operations!.Values.Single().Responses!.ContainsKey("503")).IsTrue();
 
         foreach (string path in new[] { "/scan", "/scan/jobs" })
         {

@@ -1,130 +1,71 @@
-using System;
 using System.Net;
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
-using System.Threading;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.AspNetCore.Http.Json;
-using Soenneker.Cloudflare.Clamav.Managers.Abstract;
-using Soenneker.Cloudflare.Clamav.Responses;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc.Testing;
-
+using Soenneker.Cloudflare.Clamav.Services;
 namespace Soenneker.Cloudflare.Clamav.Tests;
 
-/// <summary>Verifies HTTP request validation through the scanner's real endpoints and dependency registrations.</summary>
 public sealed class CloudflareClamavTests
 {
     [Test]
-    [Arguments("/scan")]
-    [Arguments("/scan/jobs")]
-    public async ValueTask Scan_requires_authentication(string path, CancellationToken cancellationToken)
+    public async Task Scan_requires_authentication(CancellationToken token)
     {
-        await using var application = new ScannerApplicationFactory();
-        using System.Net.Http.HttpClient client = application.CreateClient();
+        await using var factory = new ScannerApplicationFactory();
+        using HttpClient client = factory.CreateClient();
         using var content = new ByteArrayContent([1]);
-        using HttpResponseMessage response = await client.PostAsync(path, content, cancellationToken: cancellationToken);
+        using HttpResponseMessage response = await client.PostAsync("/scan", content, token);
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
-    /// <summary>Verifies that unauthenticated uploads are rejected before scanning or persistence.</summary>
-    /// <param name="path">The synchronous or background upload route to exercise.</param>
-    /// <returns>A task that completes after the HTTP response is checked.</returns>
-    /// <summary>Verifies that authenticated uploads exceeding the configured byte limit receive HTTP 413.</summary>
-    /// <param name="path">The synchronous or background upload route to exercise.</param>
-    /// <returns>A task that completes after the HTTP response is checked.</returns>
     [Test]
-    [Arguments("/scan")]
-    [Arguments("/scan/jobs")]
-    public async ValueTask Authorized_oversized_upload_is_rejected(string path, CancellationToken cancellationToken)
+    public async Task Oversized_upload_is_rejected_before_readiness(CancellationToken token)
     {
-        await using var application = new ScannerApplicationFactory();
-        using System.Net.Http.HttpClient client = application.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "scanner-test-key");
+        await using var factory = new ScannerApplicationFactory();
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ScannerApplicationFactory.ApiKey);
         using var content = new ByteArrayContent(new byte[17]);
-        using HttpResponseMessage response = await client.PostAsync(path, content, cancellationToken: cancellationToken);
+        using HttpResponseMessage response = await client.PostAsync("/scan", content, token);
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.RequestEntityTooLarge);
     }
 
-    /// <summary>Verifies that malformed job identifiers receive HTTP 404 before storage is queried.</summary>
-    /// <returns>A task that completes after the HTTP response is checked.</returns>
     [Test]
-    public async ValueTask Invalid_job_id_is_rejected_without_querying_R2(CancellationToken cancellationToken)
-    {
-        await using var application = new ScannerApplicationFactory();
-        using System.Net.Http.HttpClient client = application.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "scanner-test-key");
-        using HttpResponseMessage response = await client.GetAsync("/scan/jobs/not-a-guid", cancellationToken: cancellationToken);
-        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
-    }
-    [Test]
-    public async ValueTask Responses_use_generated_metadata_and_preserve_job_location(CancellationToken cancellationToken)
+    public async Task Readiness_fails_closed_while_liveness_remains_healthy(CancellationToken token)
     {
         await using var factory = new ScannerApplicationFactory();
-        var manager = new FakeScannerManager();
-        await using WebApplicationFactory<Program> application = factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
-        {
-            services.RemoveAll<IScannerManager>();
-            services.AddSingleton<IScannerManager>(manager);
-            services.Configure<JsonOptions>(options =>
-            {
-                // Keep only the application's generated resolver: reflection cannot mask missing metadata.
-                for (int i = options.SerializerOptions.TypeInfoResolverChain.Count - 1; i >= 0; i--)
-                {
-                    if (options.SerializerOptions.TypeInfoResolverChain[i] is DefaultJsonTypeInfoResolver)
-                        options.SerializerOptions.TypeInfoResolverChain.RemoveAt(i);
-                }
-            });
-        }));
-        using System.Net.Http.HttpClient client = application.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "scanner-test-key");
-        foreach (bool ready in new[] { true, false })
-        {
-            manager.Ready = ready;
-            using HttpResponseMessage health = await client.GetAsync("/health", cancellationToken: cancellationToken);
-            await Assert.That(health.StatusCode).IsEqualTo(ready ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable);
-            using JsonDocument json = JsonDocument.Parse(await health.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
-            await Assert.That(json.RootElement.GetProperty("ready").GetBoolean()).IsEqualTo(ready);
-        }
-        using var scanContent = new ByteArrayContent([1]);
-        using HttpResponseMessage scan = await client.PostAsync("/scan", scanContent, cancellationToken: cancellationToken);
-        await Assert.That(scan.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using JsonDocument verdict = JsonDocument.Parse(await scan.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
-        await Assert.That(verdict.RootElement.GetProperty("clean").GetBoolean()).IsTrue();
-        await Assert.That(verdict.RootElement.GetProperty("threat").ValueKind).IsEqualTo(JsonValueKind.Null);
-
-        using var queueContent = new ByteArrayContent([1]);
-        using HttpResponseMessage queued = await client.PostAsync("/scan/jobs", queueContent, cancellationToken: cancellationToken);
-        await Assert.That(queued.StatusCode).IsEqualTo(HttpStatusCode.Accepted);
-        using JsonDocument accepted = JsonDocument.Parse(await queued.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
-        await Assert.That(accepted.RootElement.GetProperty("statusUrl").GetString()).IsEqualTo(queued.Headers.Location!.ToString());
-        using HttpResponseMessage job = await client.GetAsync(queued.Headers.Location, cancellationToken: cancellationToken);
-        await Assert.That(job.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using JsonDocument record = JsonDocument.Parse(await job.Content.ReadAsStringAsync(cancellationToken: cancellationToken));
-        await Assert.That(record.RootElement.GetProperty("id").GetString()).IsEqualTo(manager.Job.Id);
-        await Assert.That(record.RootElement.GetProperty("result").ValueKind).IsEqualTo(JsonValueKind.Null);
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ScannerApplicationFactory.ApiKey);
+        using HttpResponseMessage ready = await client.GetAsync("/ready", token);
+        using HttpResponseMessage health = await client.GetAsync("/health", token);
+        await Assert.That(ready.StatusCode).IsEqualTo(HttpStatusCode.ServiceUnavailable);
+        await Assert.That(health.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(ready.Headers.CacheControl!.NoStore).IsTrue();
     }
 
-    private sealed class FakeScannerManager : IScannerManager
+    [Test]
+    public async Task Admission_rejects_excess_work_without_waiting_and_recovers_after_release()
     {
-        public bool Ready { get; set; }
-        public VirusScanJobResponse Job { get; } = new(Guid.NewGuid().ToString("D"), "queued", null, null, DateTimeOffset.UtcNow, null);
+        await using var factory = new ScannerApplicationFactory();
+        ScanAdmission admission = factory.Resolve<ScanAdmission>();
+        await Assert.That(admission.TryAcquire()).IsTrue();
+        await Assert.That(admission.TryAcquire()).IsTrue();
+        await Assert.That(admission.TryAcquire()).IsFalse();
+        admission.Release();
+        await Assert.That(admission.TryAcquire()).IsTrue();
+        admission.Release(); admission.Release();
+    }
 
-        public ValueTask<string> GetVersion(CancellationToken cancellationToken = default) => new(Ready ? "ClamAV" : "");
-        public ValueTask<VirusScanJobResponse?> GetJob(string jobId, CancellationToken cancellationToken = default) => new(Job);
-        public ValueTask<VirusScanResponse> Scan(string temporaryPath, CancellationToken cancellationToken = default)
+    [Test]
+    public async Task Unready_scan_releases_its_admission_reservation(CancellationToken token)
+    {
+        await using var factory = new ScannerApplicationFactory();
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ScannerApplicationFactory.ApiKey);
+        for (int i = 0; i < 4; i++)
         {
-            System.IO.File.Delete(temporaryPath);
-            return new(new VirusScanResponse(true, null, "ClamAV"));
-        }
-        public ValueTask<VirusScanJobResponse> Queue(string temporaryPath, CancellationToken cancellationToken = default)
-        {
-            System.IO.File.Delete(temporaryPath);
-            return new(Job);
+            using var content = new ByteArrayContent([1]);
+            using HttpResponseMessage response = await client.PostAsync("/scan", content, token);
+            await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.ServiceUnavailable);
         }
     }
 }

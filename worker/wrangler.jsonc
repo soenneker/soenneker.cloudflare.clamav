@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clamav-scanner",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "containers": [{ "class_name": "ScannerContainer", "image": "../Dockerfile", "instance_type": "standard-2", "max_instances": 1 }],
+  "durable_objects": { "bindings": [{ "name": "SCANNER", "class_name": "ScannerContainer" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScannerContainer"] }],
+  "d1_databases": [{ "binding": "JOBS", "database_name": "scanner-jobs", "database_id": "REPLACE_WITH_DATABASE_ID", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "scanner-uploads" }],
+  "queues": {
+    "producers": [{ "binding": "SCANS", "queue": "scanner-scans" }],
+    "consumers": [{ "queue": "scanner-scans", "max_batch_size": 1, "max_concurrency": 2, "max_retries": 5, "dead_letter_queue": "scanner-scans-dead" }]
+  },
+  "triggers": { "crons": ["* * * * *"] }
+}

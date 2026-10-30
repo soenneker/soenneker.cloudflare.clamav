@@ -17,4 +17,8 @@ public sealed record VirusScanJobResponse(
     VirusScanResponse? Result,
     string? Error,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt)
+{
+    /// <summary>Number of processing leases acquired for this job.</summary>
+    public int Attempts { get; init; }
+}

@@ -3,7 +3,8 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Soenneker.Cloudflare.Clamav.Responses;
-using Soenneker.Utils.Json;
+using System.Text.Json;
+using Soenneker.Cloudflare.Clamav.Stores;
 using System.Threading;
 
 namespace Soenneker.Cloudflare.Clamav.Tests;
@@ -24,10 +25,10 @@ public sealed class ScanJobJsonTests
             completed ? new VirusScanResponse(true, null, "ClamAV") : null, null,
             createdAt, completed ? createdAt.AddMinutes(1) : null);
 
-        byte[] json = JsonUtil.SerializeToUtf8Bytes(job);
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(job, LibraryJsonContext.Default.VirusScanJobResponse);
         await Assert.That(Encoding.UTF8.GetString(json)).Contains("\"createdAt\"");
         await using var stream = new MemoryStream(json);
-        VirusScanJobResponse? restored = await JsonUtil.Deserialize<VirusScanJobResponse>(stream, cancellationToken: cancellationToken);
+        VirusScanJobResponse? restored = await JsonSerializer.DeserializeAsync(stream, LibraryJsonContext.Default.VirusScanJobResponse, cancellationToken);
         await Assert.That(restored).IsEqualTo(job);
     }
 }
