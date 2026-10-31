@@ -30,7 +30,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Soenneker.Clamav.Definitions" Version="11.0.121" />
+        <PackageReference Include="Soenneker.Clamav.Definitions" Version="11.0.125" />
         <PackageReference Include="Soenneker.Clamav.Linux" Version="4.0.4" />
         <PackageReference Include="Soenneker.Clamav.Windows" Version="4.0.2" />
         <PackageReference Include="Soenneker.Clamav.Freshclam.Linux" Version="4.0.6" />
