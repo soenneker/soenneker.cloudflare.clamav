@@ -9,7 +9,7 @@ RUN dotnet publish src/Soenneker.Cloudflare.Clamav/Soenneker.Cloudflare.Clamav.c
     --configuration Release --runtime linux-x64 --no-restore --output /app/publish -p:PublishAot=true -p:PublishDocumentationFile=false
 RUN find /app/publish/Resources/linux-x64 -type f \( -name clamd -o -name clamscan -o -name clamdscan -o -name freshclam \) -exec chmod 755 {} +
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:11.0@sha256:7d1d198d20d8f0a6bedb791ca7d56cc54c7d2d03e7efd84e0c038bde8407cbf5
+FROM mcr.microsoft.com/dotnet/runtime-deps:11.0@sha256:9f4bfcab47dc8bdbe6582528890da6c81e41246e2ae3a6690aea491350258f63
 WORKDIR /app
 COPY --from=build /app/publish/ ./
 RUN mkdir /data && chown "$APP_UID:$APP_UID" /data
