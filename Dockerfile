@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:11.0@sha256:3a9175b6c54b2f076817af1360f691c9994447b192faa48a1a1f112a516844c7 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0@sha256:b55f191e80c1828476d2b080d05d33e1183068f5bcaeee684f28a1d4e31a10ad AS build
 RUN apt-get update && apt-get install -y --no-install-recommends clang zlib1g-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY global.json ./
