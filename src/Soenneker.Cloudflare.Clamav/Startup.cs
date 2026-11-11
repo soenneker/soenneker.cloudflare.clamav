@@ -41,7 +41,7 @@ public sealed class Startup(IConfiguration configuration)
             services.AddOpenTelemetry()
                 .ConfigureResource(resource => resource.AddService("Soenneker.Cloudflare.Clamav"))
                 .WithMetrics(metrics => metrics.AddMeter("Soenneker.Cloudflare.Clamav").AddAspNetCoreInstrumentation().AddOtlpExporter())
-                .WithTracing(tracing => tracing.AddSource("Soenneker.Cloudflare.Clamav").AddAspNetCoreInstrumentation().AddOtlpExporter());
+                .WithTracing(tracing => tracing.AddSource("Soenneker.Cloudflare.Clamav", "Microsoft.AspNetCore").AddOtlpExporter());
     }
 
     public void Configure(WebApplication app, IWebHostEnvironment environment)
