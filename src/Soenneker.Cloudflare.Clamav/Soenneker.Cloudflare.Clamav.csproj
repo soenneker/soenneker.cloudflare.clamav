@@ -38,7 +38,7 @@
         <PackageReference Include="Soenneker.Asyncs.Semaphores" Version="11.0.38" />
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.21.0" />
         <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.21.0" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.2" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.21.0" />
     </ItemGroup>
 
     <Target Name="RemoveWindowsScannerAssetsFromLinuxPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
