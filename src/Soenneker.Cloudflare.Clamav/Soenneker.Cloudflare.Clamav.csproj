@@ -27,11 +27,8 @@
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="11.0.0" />
         <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="11.0.0" PrivateAssets="all" />
         <PackageReference Include="Soenneker.Gen.EnumValues" Version="11.0.68" />
-    </ItemGroup>
-
-    <ItemGroup>
         <PackageReference Include="Soenneker.Clamav.Definitions" Version="11.0.179" />
-        <PackageReference Include="Soenneker.Clamav.Linux" Version="4.0.4" />
+        <PackageReference Include="Soenneker.Clamav.Linux" Version="11.0.94" />
         <PackageReference Include="Soenneker.Clamav.Windows" Version="4.0.2" />
         <PackageReference Include="Soenneker.Clamav.Freshclam.Linux" Version="11.0.94" />
         <PackageReference Include="Soenneker.Clamav.Freshclam.Windows" Version="4.0.4" />
